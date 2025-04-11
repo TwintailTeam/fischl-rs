@@ -1,5 +1,5 @@
-use wincompatlib::prelude::{WineArch, WineBootExt, WineWithExt};
-use wincompatlib::wine::Wine;
+use wincompatlib::prelude::{WineBootExt, WineWithExt};
+use wincompatlib::wine::{Wine, WineArch};
 use crate::compat::Compat;
 
 #[cfg(feature = "compat")]
@@ -16,6 +16,7 @@ impl Compat {
 
     pub fn update_prefix(wine: String, prefix: String) -> Result<bool, String> {
         let upd = Wine::from_binary(wine).with_arch(WineArch::Win64).update_prefix(Some(prefix));
+
         if upd.is_ok() {
             Ok(true)
         } else {

@@ -1,17 +1,17 @@
 use wincompatlib::dxvk::{InstallParams};
-use wincompatlib::prelude::{WineArch, WineWithExt};
-use wincompatlib::wine::Wine;
+use wincompatlib::prelude::{WineWithExt};
+use wincompatlib::wine::{Wine, WineArch};
 use crate::compat::Compat;
 
 #[cfg(feature = "compat")]
 impl Compat {
-    pub fn setup_dxvk(wine: String, prefix: String, dxvk: String) -> Result<Self, String> {
+    pub fn add_dxvk(wine: String, prefix: String, dxvk: String) -> Result<bool, String> {
         let wine = Wine::from_binary(wine).with_prefix(prefix).with_arch(WineArch::Win64);
         let wp = wine.install_dxvk(dxvk, InstallParams::default());
         if wp.is_ok() {
-            Ok(Compat { wine })
+            Ok(true)
         } else {
-            Err("Failed to install DXVK into prefix!".into())
+            Ok(false)
         }
     }
 

@@ -1,5 +1,50 @@
+use std::fs;
+use std::fs::File;
+use std::path::Path;
+use compress_tools::Ownership;
+use reqwest::header::USER_AGENT;
+use crate::utils::git_structs::GithubRelease;
 
-#[derive(Debug, Clone)]
+pub mod git_structs;
+
+pub fn get_github_release(repo_owner: String, repo_name: String) -> Option<GithubRelease> {
+    if repo_name.is_empty() || repo_owner.is_empty() {
+        None
+    } else {
+        let url = format!("https://api.github.com/repos/{}/{}/releases/latest", repo_owner, repo_name);
+        let client = reqwest::blocking::Client::new();
+        let response = client.get(url).header(USER_AGENT, "KeqingLauncher/tauri-app").send();
+        if response.is_ok() {
+            let list = response.unwrap();
+            let jsonified: GithubRelease = list.json().unwrap();
+            Some(jsonified)
+        } else {
+            None
+        }
+    }
+}
+
+pub fn extract_archive(archive_path: String, extract_path: String) -> Option<bool> {
+    let src = Path::new(&archive_path);
+    let dest = Path::new(&extract_path);
+
+    if !src.exists() {
+        None
+    } else if !dest.exists() {
+        fs::create_dir_all(&dest).unwrap();
+        let mut file = File::open(&src).unwrap();
+        compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
+        fs::remove_file(&src).unwrap();
+        Some(true)
+    } else {
+        let mut file = File::open(&src).unwrap();
+        compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
+        fs::remove_file(&src).unwrap();
+        Some(true)
+    }
+}
+
+/*#[derive(Debug, Clone)]
 pub struct GameManifest {
     pub version: i32,
     pub display_name: String,
@@ -112,4 +157,4 @@ pub struct GameExtras {
     pub preload: Option<GamePreload>,
     pub switches: GameTweakSwitches,
     pub fps_unlock_options: Vec<String>,
-}
+}*/

@@ -6,9 +6,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 wincompatlib = {version = "0.7.7", features = ["all"], optional = true}
+compress-tools = {version = "0.15.1", features = [], optional = true}
+reqwest = {version = "0.12.15", features = ["blocking", "json"], optional = true}
 
 [features]
 compat = ["dep:wincompatlib"]
+download = ["dep:compress-tools", "dep:reqwest"]
 
-default = []
+default = ["download"]
