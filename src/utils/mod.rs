@@ -1,11 +1,13 @@
-use std::fs;
+use std::{fs, io};
 use std::fs::File;
 use std::path::Path;
 use compress_tools::Ownership;
 use reqwest::header::USER_AGENT;
-use crate::utils::git_structs::GithubRelease;
+use crate::utils::codeberg_structs::CodebergRelease;
+use crate::utils::github_structs::GithubRelease;
 
-pub mod git_structs;
+pub mod github_structs;
+pub mod codeberg_structs;
 
 pub fn get_github_release(repo_owner: String, repo_name: String) -> Option<GithubRelease> {
     if repo_name.is_empty() || repo_owner.is_empty() {
@@ -13,7 +15,7 @@ pub fn get_github_release(repo_owner: String, repo_name: String) -> Option<Githu
     } else {
         let url = format!("https://api.github.com/repos/{}/{}/releases/latest", repo_owner, repo_name);
         let client = reqwest::blocking::Client::new();
-        let response = client.get(url).header(USER_AGENT, "KeqingLauncher/tauri-app").send();
+        let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").send();
         if response.is_ok() {
             let list = response.unwrap();
             let jsonified: GithubRelease = list.json().unwrap();
@@ -24,7 +26,24 @@ pub fn get_github_release(repo_owner: String, repo_name: String) -> Option<Githu
     }
 }
 
-pub fn extract_archive(archive_path: String, extract_path: String) -> Option<bool> {
+pub fn get_codeberg_release(repo_owner: String, repo_name: String) -> Option<CodebergRelease> {
+    if repo_name.is_empty() || repo_owner.is_empty() {
+        None
+    } else {
+        let url = format!("https://codeberg.org/api/v1/repos/{}/{}/releases?draft=false&pre-release=false", repo_owner, repo_name);
+        let client = reqwest::blocking::Client::new();
+        let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").send();
+        if response.is_ok() {
+            let list = response.unwrap();
+            let jsonified: CodebergRelease = list.json().unwrap();
+            Some(jsonified)
+        } else {
+            None
+        }
+    }
+}
+
+pub fn extract_archive(archive_path: String, extract_path: String, move_subdirs: bool) -> Option<bool> {
     let src = Path::new(&archive_path);
     let dest = Path::new(&extract_path);
 
@@ -35,14 +54,66 @@ pub fn extract_archive(archive_path: String, extract_path: String) -> Option<boo
         let mut file = File::open(&src).unwrap();
         compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
         fs::remove_file(&src).unwrap();
+
+        if move_subdirs {
+            copy_dir_all(&dest).unwrap();
+        }
+
         Some(true)
     } else {
         let mut file = File::open(&src).unwrap();
         compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
         fs::remove_file(&src).unwrap();
+
+        if move_subdirs {
+            copy_dir_all(&dest).unwrap();
+        }
+
         Some(true)
     }
 }
+
+pub fn copy_dir_all(dst: impl AsRef<Path>) -> io::Result<()> {
+    for entry in fs::read_dir(dst.as_ref())? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+
+        if ty.is_dir() {
+            move_dir_and_files(&entry.path(), dst.as_ref())?;
+            fs::remove_dir(entry.path())?;
+        }
+    }
+    Ok(())
+}
+
+fn move_dir_and_files(src: &Path, dst: &Path) -> io::Result<()> {
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+
+        if ty.is_file() {
+            fs::rename(entry.path(), dst.join(entry.file_name()))?;
+        } else {
+            let new_path = dst.join(entry.file_name());
+            fs::rename(entry.path(), new_path)?;
+        }
+    }
+    Ok(())
+}
+
+/*fn move_dir_and_files(src: &Path, dst: &Path) -> io::Result<()> {
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+
+        if ty.is_dir() {
+            let new_path = dst.join(entry.file_name());
+            fs::rename(entry.path(), new_path)?;
+
+        }
+    }
+    Ok(())
+}*/
 
 /*#[derive(Debug, Clone)]
 pub struct GameManifest {

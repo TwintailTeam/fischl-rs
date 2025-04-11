@@ -21,6 +21,7 @@ mod tests {
     }*/
     use std::path::Path;
     use crate::download::compatibility::{download_dxvk, download_runner};
+    use crate::download::misc::{download_fps_unlock, download_jadeite};
     use crate::download::xxmi::{download_xxmi, download_xxmi_packages};
     use crate::utils::extract_archive;
 
@@ -30,7 +31,7 @@ mod tests {
         let success = download_xxmi(dest);
         if success.is_some() {
             let finaldest = dest.join("xxmi.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.join("testing").to_str().unwrap().to_string());
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.join("testing").to_str().unwrap().to_string(), false);
 
             if extract.is_some() {
                 println!("xxmi extracted!")
@@ -47,10 +48,10 @@ mod tests {
         let dest = Path::new("/home/tukan/.local/share/com.keqinglauncher.app/extras/xxmi/testing");
         let success = download_xxmi_packages(dest);
         if success.is_some() {
-            extract_archive(dest.join("gimi.zip").to_str().unwrap().to_string(), dest.join("gimi").to_str().unwrap().to_string());
-            extract_archive(dest.join("srmi.zip").to_str().unwrap().to_string(), dest.join("srmi").to_str().unwrap().to_string());
-            extract_archive(dest.join("zzmi.zip").to_str().unwrap().to_string(), dest.join("zzmi").to_str().unwrap().to_string());
-            extract_archive(dest.join("wwmi.zip").to_str().unwrap().to_string(), dest.join("wwmi").to_str().unwrap().to_string());
+            extract_archive(dest.join("gimi.zip").to_str().unwrap().to_string(), dest.join("gimi").to_str().unwrap().to_string(), false);
+            extract_archive(dest.join("srmi.zip").to_str().unwrap().to_string(), dest.join("srmi").to_str().unwrap().to_string(), false);
+            extract_archive(dest.join("zzmi.zip").to_str().unwrap().to_string(), dest.join("zzmi").to_str().unwrap().to_string(), false);
+            extract_archive(dest.join("wwmi.zip").to_str().unwrap().to_string(), dest.join("wwmi").to_str().unwrap().to_string(), false);
             println!("xxmi packages extracted!")
         } else {
             println!("Failed to download xxmi packages");
@@ -65,7 +66,7 @@ mod tests {
         let success = download_runner(url.to_string(), dest);
         if success.is_some() {
             let finaldest = dest.join("runner.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), true);
 
             if extract.is_some() {
                 println!("runner extracted!")
@@ -85,10 +86,41 @@ mod tests {
         let success = download_dxvk(url.to_string(), dest);
         if success.is_some() {
             let finaldest = dest.join("dxvk.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), true);
 
             if extract.is_some() {
                 println!("dxvk extracted!")
+            } else {
+                println!("Failed to extract!");
+            }
+        } else {
+            println!("failed to download dxvk");
+        }
+    }
+
+    #[test]
+    fn download_fpsunlock_test() {
+        let dest = Path::new("/home/tukan/.local/share/com.keqinglauncher.app/extras/fps_unlock/testing");
+
+        let success = download_fps_unlock(&dest);
+        if success.is_some() {
+            println!("fps unlock downloaded!")
+        } else {
+            println!("failed to download dxvk");
+        }
+    }
+
+    #[test]
+    fn download_jadeite_test() {
+        let dest = Path::new("/home/tukan/.local/share/com.keqinglauncher.app/extras/jadeite/testing");
+
+        let success = download_jadeite(&dest);
+        if success.is_some() {
+            let finaldest = dest.join("jadeite.zip");
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), false);
+
+            if extract.is_some() {
+                println!("jadeite extracted!")
             } else {
                 println!("Failed to extract!");
             }
