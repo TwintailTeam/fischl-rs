@@ -9,11 +9,11 @@ use crate::utils::github_structs::GithubRelease;
 pub mod github_structs;
 pub mod codeberg_structs;
 
-pub fn get_github_release(repo_owner: String, repo_name: String) -> Option<GithubRelease> {
-    if repo_name.is_empty() || repo_owner.is_empty() {
+pub fn get_github_release(repository: String) -> Option<GithubRelease> {
+    if repository.is_empty() {
         None
     } else {
-        let url = format!("https://api.github.com/repos/{}/{}/releases/latest", repo_owner, repo_name);
+        let url = format!("https://api.github.com/repos/{}/releases/latest", repository);
         let client = reqwest::blocking::Client::new();
         let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").send();
         if response.is_ok() {
@@ -26,11 +26,11 @@ pub fn get_github_release(repo_owner: String, repo_name: String) -> Option<Githu
     }
 }
 
-pub fn get_codeberg_release(repo_owner: String, repo_name: String) -> Option<CodebergRelease> {
-    if repo_name.is_empty() || repo_owner.is_empty() {
+pub fn get_codeberg_release(repository: String) -> Option<CodebergRelease> {
+    if repository.is_empty() {
         None
     } else {
-        let url = format!("https://codeberg.org/api/v1/repos/{}/{}/releases?draft=false&pre-release=false", repo_owner, repo_name);
+        let url = format!("https://codeberg.org/api/v1/repos/{}/releases?draft=false&pre-release=false", repository);
         let client = reqwest::blocking::Client::new();
         let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").send();
         if response.is_ok() {
@@ -43,9 +43,26 @@ pub fn get_codeberg_release(repo_owner: String, repo_name: String) -> Option<Cod
     }
 }
 
-pub fn extract_archive(archive_path: String, extract_path: String, move_subdirs: bool) -> Option<bool> {
+pub fn get_tukanrepo_release(repository: String) -> Option<CodebergRelease> {
+    if repository.is_empty() {
+        None
+    } else {
+        let url = format!("https://repo.tukandev.com/api/v1/repos/{}/releases?draft=false&pre-release=false", repository);
+        let client = reqwest::blocking::Client::new();
+        let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").send();
+        if response.is_ok() {
+            let list = response.unwrap();
+            let jsonified: CodebergRelease = list.json().unwrap();
+            Some(jsonified)
+        } else {
+            None
+        }
+    }
+}
+
+pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs: bool) -> Option<bool> {
     let src = Path::new(&archive_path);
-    let dest = Path::new(&extract_path);
+    let dest = Path::new(&extract_dest);
 
     if !src.exists() {
         None

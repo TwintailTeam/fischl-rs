@@ -4,9 +4,9 @@ use reqwest::header::USER_AGENT;
 use crate::utils::{get_codeberg_release};
 
 #[cfg(feature = "download")]
-pub fn download_fps_unlock(dest: &Path) -> Option<bool> {
+pub fn download_fps_unlock(repository: String, dest: &Path) -> Option<bool> {
     if dest.exists() {
-        let rel = get_codeberg_release("mkrsym1".parse().unwrap(), "fpsunlock".parse().unwrap());
+        let rel = get_codeberg_release(repository.clone());
         if rel.is_some() {
             let client = reqwest::blocking::Client::new();
 
@@ -31,9 +31,9 @@ pub fn download_fps_unlock(dest: &Path) -> Option<bool> {
 }
 
 #[cfg(feature = "download")]
-pub fn download_jadeite(dest: &Path) -> Option<bool> {
+pub fn download_jadeite(repository: String, dest: &Path) -> Option<bool> {
     if dest.exists() {
-        let rel = get_codeberg_release("mkrsym1".parse().unwrap(), "jadeite".parse().unwrap());
+        let rel = get_codeberg_release(repository.clone());
         if rel.is_some() {
             let client = reqwest::blocking::Client::new();
 
