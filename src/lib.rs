@@ -21,6 +21,7 @@ mod tests {
     }*/
     use std::path::Path;
     use crate::download::compatibility::{download_dxvk, download_runner};
+    use crate::utils::downloader::Downloader;
     use crate::download::misc::{download_fps_unlock, download_jadeite};
     use crate::download::xxmi::{download_xxmi, download_xxmi_loader, download_xxmi_packages};
     use crate::utils::extract_archive;
@@ -128,5 +129,10 @@ mod tests {
         } else {
             println!("failed to download dxvk");
         }
+    }
+
+    #[test]
+    fn download_game_test() {
+        let dl = Downloader::new("").unwrap().with_free_space_check(true).with_continue_downloading(false);
     }
 }

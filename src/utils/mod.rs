@@ -6,8 +6,11 @@ use reqwest::header::USER_AGENT;
 use crate::utils::codeberg_structs::CodebergRelease;
 use crate::utils::github_structs::GithubRelease;
 
-pub mod github_structs;
-pub mod codeberg_structs;
+pub(crate) mod github_structs;
+pub(crate) mod codeberg_structs;
+mod free_space;
+#[cfg(feature = "download")]
+pub mod downloader;
 
 pub fn get_github_release(repository: String) -> Option<GithubRelease> {
     if repository.is_empty() {
@@ -117,20 +120,6 @@ fn move_dir_and_files(src: &Path, dst: &Path) -> io::Result<()> {
     }
     Ok(())
 }
-
-/*fn move_dir_and_files(src: &Path, dst: &Path) -> io::Result<()> {
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-
-        if ty.is_dir() {
-            let new_path = dst.join(entry.file_name());
-            fs::rename(entry.path(), new_path)?;
-
-        }
-    }
-    Ok(())
-}*/
 
 /*#[derive(Debug, Clone)]
 pub struct GameManifest {
