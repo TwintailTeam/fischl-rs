@@ -140,7 +140,7 @@ impl IntegrityFile {
 
         let game_dir = game_dir.into();
 
-        Some(list_files(game_dir.clone(), skip_names.as_slice())?
+        Some(list_files(game_dir.clone(), skip_names.as_slice()).unwrap()
             .into_iter()
             .filter(move |path| {
                 // File persist in used_files => unused
