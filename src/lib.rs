@@ -21,10 +21,11 @@ mod tests {
     }*/
     use std::path::Path;
     use crate::download::compatibility::{download_dxvk, download_runner};
-    use crate::utils::downloader::Downloader;
+    use crate::download::game::repairer::Repairer;
     use crate::download::misc::{download_fps_unlock, download_jadeite};
     use crate::download::xxmi::{download_xxmi, download_xxmi_loader, download_xxmi_packages};
     use crate::utils::extract_archive;
+    use crate::utils::game::hoyo::voice_locale::VoiceLocale;
 
     #[test]
     fn download_xxmi_test() {
@@ -131,8 +132,53 @@ mod tests {
         }
     }
 
+    // WARNING: Repair game test will take A REALLY LONG time!
     #[test]
-    fn download_game_test() {
-        let dl = Downloader::new("").unwrap().with_free_space_check(true).with_continue_downloading(false);
+    fn repair_game_test() {
+        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
+        let path = "/games/hoyo/hk4e_global/live";
+        let rep = Repairer::repair_game(res_list, path.parse().unwrap(), false);
+        if rep { 
+            println!("repair_game success!");
+        } else {
+            println!("repair_game failure!");
+        }
+    }
+
+    // WARNING: Repair audio test will take A REALLY LONG time!
+    #[test]
+    fn repair_audio_test() {
+        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
+        let path = "/games/hoyo/hk4e_global/live";
+        let rep = Repairer::repair_audio(res_list, VoiceLocale::English, path.parse().unwrap(), false);
+        if rep {
+            println!("repair_audio success!");
+        } else {
+            println!("repair_audio failure!");
+        }
+    }
+
+    #[test]
+    fn verify_game_test() {
+        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
+        let path = "/games/hoyo/hk4e_global/live";
+        let rep = Repairer::verify_game(res_list, path.parse().unwrap(), false);
+        if rep {
+            println!("verify_game success!");
+        } else {
+            println!("verify_game failure!");
+        }
+    }
+
+    #[test]
+    fn verify_audio_test() {
+        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
+        let path = "/games/hoyo/hk4e_global/live";
+        let rep = Repairer::verify_audio(res_list, VoiceLocale::English, path.parse().unwrap(), false);
+        if rep {
+            println!("verify_audio success!");
+        } else {
+            println!("verify_audio failure!");
+        }
     }
 }

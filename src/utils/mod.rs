@@ -1,6 +1,6 @@
 use std::{fs, io};
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path};
 use compress_tools::Ownership;
 use reqwest::header::USER_AGENT;
 use crate::utils::codeberg_structs::CodebergRelease;
@@ -9,8 +9,7 @@ use crate::utils::github_structs::GithubRelease;
 pub(crate) mod github_structs;
 pub(crate) mod codeberg_structs;
 mod free_space;
-#[cfg(feature = "download")]
-pub mod downloader;
+pub mod game;
 
 pub fn get_github_release(repository: String) -> Option<GithubRelease> {
     if repository.is_empty() {
