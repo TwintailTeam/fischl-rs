@@ -150,7 +150,7 @@ mod tests {
     fn repair_audio_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = Repairer::repair_audio(res_list, VoiceLocale::English, path.parse().unwrap(), false);
+        let rep = Repairer::repair_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false);
         if rep {
             println!("repair_audio success!");
         } else {
@@ -174,7 +174,7 @@ mod tests {
     fn verify_audio_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = Repairer::verify_audio(res_list, VoiceLocale::English, path.parse().unwrap(), false);
+        let rep = Repairer::verify_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false);
         if rep {
             println!("verify_audio success!");
         } else {

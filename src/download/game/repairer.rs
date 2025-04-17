@@ -1,8 +1,6 @@
 use std::path::{Path};
 use crate::utils::game::hoyo::list_integrity_files;
 
-use crate::utils::game::hoyo::voice_locale::VoiceLocale;
-
 pub struct Repairer;
 
 impl Repairer {
@@ -26,8 +24,8 @@ impl Repairer {
         }
     }
 
-    pub fn repair_audio(res_list: String, locale: VoiceLocale, game_path: String, is_fast: bool) -> bool {
-        let files = list_integrity_files(res_list, format!("Audio_{}_pkg_version", locale.to_folder()));
+    pub fn repair_audio(res_list: String, locale: String, game_path: String, is_fast: bool) -> bool {
+        let files = list_integrity_files(res_list, format!("Audio_{}_pkg_version", locale));
 
         if files.is_some() {
             let f = files.unwrap();
@@ -65,8 +63,8 @@ impl Repairer {
         }
     }
 
-    pub fn verify_audio(res_list: String, locale: VoiceLocale, game_path: String, is_fast: bool) -> bool {
-        let files = list_integrity_files(res_list, format!("Audio_{}_pkg_version", locale.to_folder()));
+    pub fn verify_audio(res_list: String, locale: String, game_path: String, is_fast: bool) -> bool {
+        let files = list_integrity_files(res_list, format!("Audio_{}_pkg_version", locale));
 
         if files.is_some() {
             let f = files.unwrap();
