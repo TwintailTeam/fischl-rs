@@ -11,7 +11,7 @@ pub(crate) mod codeberg_structs;
 mod free_space;
 pub mod game;
 
-pub fn get_github_release(repository: String) -> Option<GithubRelease> {
+pub(crate) fn get_github_release(repository: String) -> Option<GithubRelease> {
     if repository.is_empty() {
         None
     } else {
@@ -28,7 +28,7 @@ pub fn get_github_release(repository: String) -> Option<GithubRelease> {
     }
 }
 
-pub fn get_codeberg_release(repository: String) -> Option<CodebergRelease> {
+pub(crate) fn get_codeberg_release(repository: String) -> Option<CodebergRelease> {
     if repository.is_empty() {
         None
     } else {
@@ -45,7 +45,7 @@ pub fn get_codeberg_release(repository: String) -> Option<CodebergRelease> {
     }
 }
 
-pub fn get_tukanrepo_release(repository: String) -> Option<CodebergRelease> {
+pub(crate) fn get_tukanrepo_release(repository: String) -> Option<CodebergRelease> {
     if repository.is_empty() {
         None
     } else {
@@ -92,7 +92,7 @@ pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs:
     }
 }
 
-pub fn copy_dir_all(dst: impl AsRef<Path>) -> io::Result<()> {
+pub(crate) fn copy_dir_all(dst: impl AsRef<Path>) -> io::Result<()> {
     for entry in fs::read_dir(dst.as_ref())? {
         let entry = entry?;
         let ty = entry.file_type()?;

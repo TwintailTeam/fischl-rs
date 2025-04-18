@@ -68,6 +68,7 @@ impl IntegrityFile {
     // TODO: Implement a retry mechanism to reattempt a file download if it fails 3? 5? times
     pub(crate) fn repair<T: Into<PathBuf> + std::fmt::Debug>(&self, game_path: T) -> Option<bool> {
         let client = reqwest::blocking::Client::builder().timeout(time::Duration::from_secs(60)).build().unwrap();
+
         match client.get(format!("{}/{}", self.base_url, self.path.to_string_lossy())).send() {
             Ok(r) => {
                 let p = game_path.into().join(&self.path);

@@ -1,7 +1,6 @@
 use std::path::{Path};
+use crate::download::game::Repairer;
 use crate::utils::game::hoyo::list_integrity_files;
-
-pub struct Repairer;
 
 impl Repairer {
     pub fn repair_game(res_list: String, game_path: String, is_fast: bool) -> bool {
