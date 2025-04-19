@@ -1,10 +1,9 @@
 pub mod compat;
 pub mod utils;
-mod download;
+pub mod download;
 
 #[cfg(test)]
 mod tests {
-
     /*#[test]
     fn prefix_new() {
         let wp = "/home/tukan/.local/share/com.keqinglauncher.app/compatibility/runners/8.26-wine-ge-proton/bin/wine64".to_string();
@@ -153,30 +152,6 @@ mod tests {
             println!("repair_audio success!");
         } else {
             println!("repair_audio failure!");
-        }
-    }
-
-    #[test]
-    fn verify_game_test() {
-        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
-        let path = "/games/hoyo/hk4e_global/live";
-        let rep = Repairer::verify_game(res_list, path.parse().unwrap(), false);
-        if rep {
-            println!("verify_game success!");
-        } else {
-            println!("verify_game failure!");
-        }
-    }
-
-    #[test]
-    fn verify_audio_test() {
-        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
-        let path = "/games/hoyo/hk4e_global/live";
-        let rep = Repairer::verify_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false);
-        if rep {
-            println!("verify_audio success!");
-        } else {
-            println!("verify_audio failure!");
         }
     }
 }

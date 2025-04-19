@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Test tests::repair_game_test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="test --package fischl --lib tests::repair_game_test -- --exact --show-output" />
+    <option name="command" value="test --package fischl --lib tests::repair_game_test -- --exact" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />
     <option name="emulateTerminal" value="true" />

@@ -10,6 +10,7 @@ pub(crate) mod github_structs;
 pub(crate) mod codeberg_structs;
 mod free_space;
 pub mod game;
+pub mod downloader;
 
 pub(crate) fn get_github_release(repository: String) -> Option<GithubRelease> {
     if repository.is_empty() {
@@ -118,6 +119,19 @@ fn move_dir_and_files(src: &Path, dst: &Path) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[inline]
+pub fn prettify_bytes(bytes: u64) -> String {
+    if bytes > 1024 * 1024 * 1024 {
+        format!("{:.2} GB", bytes as f64 / 1024.0 / 1024.0 / 1024.0)
+    } else if bytes > 1024 * 1024 {
+        format!("{:.2} MB", bytes as f64 / 1024.0 / 1024.0)
+    } else if bytes > 1024 {
+        format!("{:.2} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.2} B", bytes)
+    }
 }
 
 /*#[derive(Debug, Clone)]

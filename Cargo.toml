@@ -13,6 +13,7 @@ reqwest = {version = "0.12.15", features = ["blocking", "json"], optional = true
 md-5 = {version = "0.10", optional = true}
 sysinfo = "0.34.2"
 serde_json = "1.0.140"
+thiserror = "1.0"
 
 [features]
 compat = ["dep:wincompatlib"]

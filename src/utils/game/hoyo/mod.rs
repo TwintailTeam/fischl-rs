@@ -1,11 +1,8 @@
-use std::{fs, time, path::PathBuf};
+use std::{fs, path::PathBuf};
 use std::collections::HashSet;
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
-
-
-#[cfg(target_os = "linux")]
-use std::os::unix::fs::PermissionsExt;
+use crate::utils::downloader::Downloader;
 
 pub mod voice_locale;
 
@@ -65,40 +62,21 @@ impl IntegrityFile {
         fs::metadata(game_path.into().join(&self.path)).and_then(|metadata| Ok(metadata.len() == self.size)).unwrap_or(false)
     }
 
-    // TODO: Implement a retry mechanism to reattempt a file download if it fails 3? 5? times
     pub(crate) fn repair<T: Into<PathBuf> + std::fmt::Debug>(&self, game_path: T) -> Option<bool> {
-        let client = reqwest::blocking::Client::builder().timeout(time::Duration::from_secs(60)).build().unwrap();
+        let mut downloader = Downloader::new(format!("{}/{}", self.base_url, self.path.to_string_lossy())).unwrap();
+        downloader.continue_downloading = false;
 
-        match client.get(format!("{}/{}", self.base_url, self.path.to_string_lossy())).send() {
-            Ok(r) => {
-                let p = game_path.into().join(&self.path);
-                println!("Repairing: {}", p.to_str().unwrap());
-                #[cfg(target_os = "linux")]
-                {
-                    if p.metadata().unwrap().permissions().readonly() {
-                        p.metadata().unwrap().permissions().set_mode(0o744);
-                        fs::write(p.to_path_buf(), r.bytes().unwrap()).unwrap();
-                    } else {
-                        fs::write(p.to_path_buf(), r.bytes().unwrap()).unwrap();
-                    }
-                }
+        let dl = downloader.download(game_path.into().join(&self.path), |_, _| {});
 
-                #[cfg(target_os = "windows")]
-                {
-                    fs::write(p.to_path_buf(), r.bytes().unwrap()).unwrap();
-                }
-                Some(true)
-            }
-            Err(_) => {
-                None
-            }
+        if dl.is_ok() {
+            Some(true)
+        } else {
+            None
         }
     }
 
     /// Calculate difference between actual files stored in `game_dir`, and files listed in `used_files`
-    ///
     /// Returned difference will contain files that are not used by the game and should (or just can) be deleted
-    ///
     /// `used_files` can be both absolute and relative to `game_dir`
     pub(crate) fn try_get_unused_files<T, F, U>(game_dir: T, used_files: F, skip_names: U) -> Option<Vec<PathBuf>> where T: Into<PathBuf>, F: IntoIterator<Item = PathBuf>, U: IntoIterator<Item = String> {
         fn list_files(path: PathBuf, skip_names: &[String]) -> std::io::Result<Vec<PathBuf>> {
@@ -113,7 +91,6 @@ impl IntegrityFile {
                 for skip in skip_names {
                     if entry.file_name().to_string_lossy().contains(skip) {
                         should_skip = true;
-
                         break;
                     }
                 }
@@ -121,9 +98,7 @@ impl IntegrityFile {
                 if !should_skip {
                     if entry.file_type()?.is_dir() {
                         files.append(&mut list_files(entry_path, skip_names)?);
-                    }
-
-                    else {
+                    } else {
                         files.push(entry_path);
                     }
                 }
@@ -132,13 +107,8 @@ impl IntegrityFile {
             Ok(files)
         }
 
-        let used_files = used_files.into_iter()
-            .map(|path| path.into())
-            .collect::<HashSet<PathBuf>>();
-
-        let skip_names = skip_names.into_iter()
-            .collect::<Vec<String>>();
-
+        let used_files = used_files.into_iter().map(|path| path.into()).collect::<HashSet<PathBuf>>();
+        let skip_names = skip_names.into_iter().collect::<Vec<String>>();
         let game_dir = game_dir.into();
 
         Some(list_files(game_dir.clone(), skip_names.as_slice()).unwrap()
@@ -158,7 +128,6 @@ impl IntegrityFile {
 
                 // File not persist in used_files => not unused
                 return true;
-            })
-            .collect())
+            }).collect())
     }
 }
