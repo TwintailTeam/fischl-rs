@@ -3,7 +3,7 @@ pub mod hoyo;
 #[cfg(feature = "download")]
 pub mod kuro;
 
-struct Game;
+pub struct Game;
 pub trait Hoyo {
     fn download(urls: Vec<String>, game_path: String) -> bool;
     fn patch(url: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool;
