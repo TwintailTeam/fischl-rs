@@ -20,8 +20,8 @@ mod tests {
     }*/
     use std::path::Path;
     use crate::download::Downloader;
-    use crate::download::game::Repairer;
-    use crate::utils::extract_archive;
+    use crate::download::game::{Game, Repairer};
+    use crate::utils::{extract_archive, prettify_bytes};
     use crate::utils::game::hoyo::voice_locale::VoiceLocale;
 
     #[test]
@@ -152,6 +152,52 @@ mod tests {
             println!("repair_audio success!");
         } else {
             println!("repair_audio failure!");
+        }
+    }
+
+    #[test]
+    fn repair_purgeunused_test() {
+        let path = "/games/hoyo/hk4e_global/live";
+        let rep = Repairer::remove_unused(path.parse().unwrap(), Vec::new(), Vec::new());
+        if rep {
+            println!("purge_unused success!");
+        } else {
+            println!("purge_unused failure!");
+        }
+    }
+
+    #[test]
+    fn download_fullgame_test() {
+        let mut urls = Vec::<String>::new();
+        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.001"));
+        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.002"));
+        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.003"));
+        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.004"));
+        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.005"));
+        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.006"));
+        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.007"));
+        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.008"));
+
+        let path = "/games/hoyo/hk4e_global/live/testing";
+        let rep = Game::download(urls, path.parse().unwrap());
+        if rep {
+            println!("full_game success!");
+        } else {
+            println!("full_game failure!");
+        }
+    }
+
+    #[test]
+    fn download_hdiff_test() {
+        let url = "https://autopatchhk.yuanshen.com/client_app/update/hk4e_global/game_5.4.0_5.5.0_hdiff_IlvHovyEdpXnwiCH.zip";
+        let path = "/games/hoyo/hk4e_global/live/testing";
+        let rep = Game::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
+            println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
+        });
+        if rep {
+            println!("diff_game success!");
+        } else {
+            println!("diff_game failure!");
         }
     }
 }

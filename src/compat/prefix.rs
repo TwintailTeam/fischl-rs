@@ -50,4 +50,13 @@ impl Compat {
             Ok(false)
         }
     }
+
+    pub fn stop_processes(wine: String, prefix: String, force: bool) -> Result<bool, String> {
+        let session = Wine::from_binary(wine).with_arch(WineArch::Win64).with_prefix(prefix).stop_processes(force);
+        if session.is_ok() {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
 }

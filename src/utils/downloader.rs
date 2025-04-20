@@ -1,8 +1,7 @@
 use crate::utils::prettify_bytes;
-use std::io::{Write, Seek};
+use std::io::{Seek};
 use std::path::PathBuf;
 use std::fs::File;
-use std::sync::Arc;
 use reqwest::header::RANGE;
 use reqwest::StatusCode;
 use serde::{Serialize, Deserialize};
@@ -10,7 +9,7 @@ use thiserror::Error;
 
 use super::free_space;
 
-pub const DEFAULT_CHUNK_SIZE: usize = 128 * 1024; // 128 KB
+pub const DEFAULT_CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
 
 #[derive(Error, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DownloadingError {
@@ -45,7 +44,7 @@ impl Downloader {
     pub fn new<T: AsRef<str>>(uri: T) -> Result<Self, reqwest::Error> {
         let uri = uri.as_ref();
 
-        let client = reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(60)).build()?;
+        let client = reqwest::blocking::Client::builder().timeout(None).build()?;
         let header = client.head(uri).send()?;
         let length = header.headers().get("content-length").map(|len| len.to_str().unwrap().parse().expect("Requested site's content-length is not a number"));
 
@@ -81,9 +80,6 @@ impl Downloader {
         self.length
     }
 
-    /// Get name of downloading file from uri
-    /// - `https://example.com/example.zip` -> `example.zip`
-    /// - `https://example.com` -> `index.html`
     pub fn get_filename(&self) -> &str {
         if let Some(pos) = self.uri.replace('\\', "/").rfind(|c| c == '/') {
             if !self.uri[pos + 1..].is_empty() {
@@ -162,8 +158,8 @@ impl Downloader {
         // Download data
         match file {
             Ok(mut file) => {
-                let mut chunk = Vec::with_capacity(self.chunk_size);
-                let client = reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(60)).build()?;
+                //let mut chunk: Vec<u8> = Vec::with_capacity(self.chunk_size);
+                let client = reqwest::blocking::Client::builder().timeout(None).build()?;
                 let request = client.head(&self.uri).header(RANGE, format!("bytes={downloaded}-")).send()?;
 
                 // Request content range (downloaded + remained content size)
@@ -173,50 +169,30 @@ impl Downloader {
                 if let Some(range) = request.headers().get("content-range") {
                     // Finish downloading if header says that we've already downloaded all the data
                     if range.to_str().unwrap().contains("*/") {
-                        (progress)(self.length.unwrap_or(downloaded as u64), self.length.unwrap_or(downloaded as u64));
+                        progress(self.length.unwrap_or(downloaded as u64), self.length.unwrap_or(downloaded as u64));
                         return Ok(());
                     }
                 }
 
-                let request = client.get(&self.uri).header(RANGE, format!("bytes={downloaded}-")).send()?;
+                let mut request = client.get(&self.uri).header(RANGE, format!("bytes={downloaded}-")).send()?;
 
                 // HTTP 416 = provided range is overcame actual content length (means file is downloaded)
                 // I check this here because HEAD request can return 200 OK while GET - 416
                 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/416
                 if request.status() == StatusCode::RANGE_NOT_SATISFIABLE {
-                    (progress)(self.length.unwrap_or(downloaded as u64), self.length.unwrap_or(downloaded as u64));
+                    progress(self.length.unwrap_or(downloaded as u64), self.length.unwrap_or(downloaded as u64));
                     return Ok(());
                 }
 
-                let bytes = request.bytes()?;
-                let mut stream = bytes.iter();
-                let p = Arc::new(progress);
-
-                while let Some(byte) = stream.next() {
-                    chunk.push(*byte);
-
-                    if chunk.len() == self.chunk_size {
-                        if let Err(err) = file.write_all(&chunk) {
-                            return Err(DownloadingError::OutputFileError(path, err.to_string()));
-                        }
-
-                        chunk.clear();
-                        downloaded += self.chunk_size;
-                        (p)(downloaded as u64, self.length.unwrap_or(downloaded as u64));
-                    }
+                if let Err(err) = request.copy_to(&mut file) {
+                    return Err(DownloadingError::OutputFileError(path, err.to_string()));
                 }
 
-                if !chunk.is_empty() {
-                    if let Err(err) = file.write_all(&chunk) {
-                        return Err(DownloadingError::OutputFileError(path, err.to_string()));
-                    }
+                downloaded += file.metadata().unwrap().len() as usize;
+                progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
 
-                    downloaded += chunk.len();
-                    (p)(downloaded as u64, downloaded as u64);
-                }
-                Ok(())
+            Ok(())
             }
-
             Err(err) => Err(DownloadingError::OutputFileError(path, err.to_string()))
         }
     }
