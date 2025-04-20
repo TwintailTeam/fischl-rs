@@ -20,7 +20,7 @@ mod tests {
     }*/
     use std::path::Path;
     use crate::download::Downloader;
-    use crate::download::game::{Game, Repairer};
+    use crate::download::game::{Hoyo};
     use crate::utils::{extract_archive, prettify_bytes};
     use crate::utils::game::hoyo::voice_locale::VoiceLocale;
 
@@ -134,7 +134,7 @@ mod tests {
     fn repair_game_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = Repairer::repair_game(res_list, path.parse().unwrap(), false);
+        let rep = Hoyo::repair_game(res_list, path.parse().unwrap(), false);
         if rep { 
             println!("repair_game success!");
         } else {
@@ -147,7 +147,7 @@ mod tests {
     fn repair_audio_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = Repairer::repair_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false);
+        let rep = Hoyo::repair_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false);
         if rep {
             println!("repair_audio success!");
         } else {
@@ -156,13 +156,26 @@ mod tests {
     }
 
     #[test]
-    fn repair_purgeunused_test() {
+    fn repair_purgeunused_game_test() {
+        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = Repairer::remove_unused(path.parse().unwrap(), Vec::new(), Vec::new());
+        let rep = Hoyo::remove_unused_game_files(res_list, path.parse().unwrap());
         if rep {
-            println!("purge_unused success!");
+            println!("purge_unused_game success!");
         } else {
-            println!("purge_unused failure!");
+            println!("purge_unused_game failure!");
+        }
+    }
+
+    #[test]
+    fn repair_purgeunused_audio_test() {
+        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
+        let path = "/games/hoyo/hk4e_global/live";
+        let rep = Hoyo::remove_unused_audio_files(res_list, VoiceLocale::English.to_folder().parse().unwrap(), path.parse().unwrap());
+        if rep {
+            println!("purge_unused_audio success!");
+        } else {
+            println!("purge_unused_audio failure!");
         }
     }
 
@@ -179,7 +192,7 @@ mod tests {
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.008"));
 
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = Game::download(urls, path.parse().unwrap());
+        let rep = Hoyo::download(urls, path.parse().unwrap());
         if rep {
             println!("full_game success!");
         } else {
@@ -191,7 +204,7 @@ mod tests {
     fn download_hdiff_test() {
         let url = "https://autopatchhk.yuanshen.com/client_app/update/hk4e_global/game_5.4.0_5.5.0_hdiff_IlvHovyEdpXnwiCH.zip";
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = Game::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
+        let rep = Hoyo::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
             println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
         });
         if rep {
