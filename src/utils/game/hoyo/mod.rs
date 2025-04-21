@@ -1,5 +1,4 @@
 use std::{fs, path::PathBuf};
-use std::collections::HashSet;
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use crate::utils::downloader::Downloader;
@@ -74,60 +73,4 @@ impl IntegrityFile {
             None
         }
     }
-}
-
-/// Calculate difference between actual files stored in `game_dir`, and files listed in `used_files`
-/// Returned difference will contain files that are not used by the game and should (or just can) be deleted
-/// `used_files` can be both absolute and relative to `game_dir`
-pub(crate) fn try_get_unused_files<T, F, U>(game_dir: T, used_files: F, skip_names: U) -> Option<Vec<PathBuf>> where T: Into<PathBuf>, F: IntoIterator<Item = PathBuf>, U: IntoIterator<Item = String> {
-    fn list_files(path: PathBuf, skip_names: &[String]) -> std::io::Result<Vec<PathBuf>> {
-        let mut files = Vec::new();
-
-        for entry in fs::read_dir(&path)? {
-            let entry = entry?;
-            let entry_path = path.join(entry.file_name());
-
-            let mut should_skip = false;
-
-            for skip in skip_names {
-                if entry.file_name().to_string_lossy().contains(skip) {
-                    should_skip = true;
-                    break;
-                }
-            }
-
-            if !should_skip {
-                if entry.file_type()?.is_dir() {
-                    files.append(&mut list_files(entry_path, skip_names)?);
-                } else {
-                    files.push(entry_path);
-                }
-            }
-        }
-
-        Ok(files)
-    }
-
-    let used_files = used_files.into_iter().map(|path| path.into()).collect::<HashSet<PathBuf>>();
-    let skip_names = skip_names.into_iter().collect::<Vec<String>>();
-    let game_dir = game_dir.into();
-
-    Some(list_files(game_dir.clone(), skip_names.as_slice()).unwrap()
-        .into_iter()
-        .filter(move |path| {
-            // File persist in used_files => unused
-            if used_files.contains(path) {
-                return false;
-            }
-
-            // File persist in used_files => unused
-            if let Ok(path) = path.strip_prefix(&game_dir) {
-                if used_files.contains(path) {
-                    return false;
-                }
-            }
-
-            // File not persist in used_files => not unused
-            return true;
-        }).collect())
 }

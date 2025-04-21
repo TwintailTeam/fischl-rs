@@ -156,30 +156,6 @@ mod tests {
     }
 
     #[test]
-    fn repair_purgeunused_game_test() {
-        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
-        let path = "/games/hoyo/hk4e_global/live";
-        let rep = Game::remove_unused_game_files(res_list, path.parse().unwrap());
-        if rep {
-            println!("purge_unused_game success!");
-        } else {
-            println!("purge_unused_game failure!");
-        }
-    }
-
-    #[test]
-    fn repair_purgeunused_audio_test() {
-        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
-        let path = "/games/hoyo/hk4e_global/live";
-        let rep = Game::remove_unused_audio_files(res_list, VoiceLocale::English.to_folder().parse().unwrap(), path.parse().unwrap());
-        if rep {
-            println!("purge_unused_audio success!");
-        } else {
-            println!("purge_unused_audio failure!");
-        }
-    }
-
-    #[test]
     fn download_fullgame_test() {
         let mut urls = Vec::<String>::new();
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.001"));
@@ -190,6 +166,7 @@ mod tests {
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.006"));
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.007"));
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.008"));
+        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/Audio_English(US)_5.5.0.zip"));
 
         let path = "/games/hoyo/hk4e_global/live/testing";
         let rep = Game::download(urls, path.parse().unwrap());

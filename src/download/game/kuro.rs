@@ -12,8 +12,4 @@ impl Kuro for Game {
     fn repair_game(res_list: String, game_path: String, is_fast: bool) -> bool {
         false
     }
-
-    fn remove_unused_game_files(res_list: String, game_path: String) -> bool {
-        false
-    }
 }

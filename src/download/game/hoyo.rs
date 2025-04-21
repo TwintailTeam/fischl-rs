@@ -1,8 +1,7 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use crate::download::game::{Game, Hoyo};
 use crate::utils::downloader::Downloader;
-use crate::utils::game::hoyo::{list_integrity_files, try_get_unused_files};
+use crate::utils::game::hoyo::{list_integrity_files};
 
 impl Hoyo for Game {
     fn download(urls: Vec<String>, game_path: String) -> bool {
@@ -80,61 +79,6 @@ impl Hoyo for Game {
                 }
             });
             true
-        } else {
-            false
-        }
-    }
-
-    fn remove_unused_game_files(res_list: String, game_path: String) -> bool {
-        let path = Path::new(game_path.as_str()).to_path_buf();
-
-        let used_files = list_integrity_files(res_list, "pkg_version".parse().unwrap());
-        if used_files.is_some() {
-            let used = used_files.unwrap();
-            let paths = used.into_iter().map(|file| file.path).collect::<Vec<PathBuf>>();
-            let skip_names = [String::from("webCaches"), String::from("SDKCaches"), String::from("GeneratedSoundBanks"), String::from("ScreenShot"), ];
-
-            let diff = try_get_unused_files(path, paths, skip_names);
-            if diff.is_some() {
-                let d = diff.unwrap();
-                for f in d {
-                    if f.is_dir() {
-                        fs::remove_dir_all(f).unwrap();
-                    } else {
-                        fs::remove_file(f).unwrap();
-                    }
-                }
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
-
-    fn remove_unused_audio_files(res_list: String, locale: String, game_path: String) -> bool {
-        let path = Path::new(game_path.as_str()).to_path_buf();
-
-        let used_files = list_integrity_files(res_list, format!("Audio_{}_pkg_version", locale));
-        if used_files.is_some() {
-            let used = used_files.unwrap();
-            let paths = used.into_iter().map(|file| file.path).collect::<Vec<PathBuf>>();
-
-            let diff = try_get_unused_files(path, paths, []);
-            if diff.is_some() {
-                let d = diff.unwrap();
-                for f in d {
-                    if f.is_dir() {
-                        fs::remove_dir_all(f).unwrap();
-                    } else {
-                        fs::remove_file(f).unwrap();
-                    }
-                }
-                true
-            } else {
-                false
-            }
         } else {
             false
         }
