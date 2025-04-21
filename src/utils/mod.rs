@@ -3,6 +3,7 @@ use std::fs::File;
 use std::path::{Path};
 use compress_tools::Ownership;
 use reqwest::header::USER_AGENT;
+use serde::{Deserialize, Serialize};
 use crate::utils::codeberg_structs::CodebergRelease;
 use crate::utils::github_structs::GithubRelease;
 
@@ -63,33 +64,29 @@ pub(crate) fn get_tukanrepo_release(repository: String) -> Option<CodebergReleas
     }
 }
 
-pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs: bool) -> Option<bool> {
+pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs: bool) -> bool {
     let src = Path::new(&archive_path);
     let dest = Path::new(&extract_dest);
 
     if !src.exists() {
-        None
+        false
     } else if !dest.exists() {
         fs::create_dir_all(&dest).unwrap();
         let mut file = File::open(&src).unwrap();
         compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
         fs::remove_file(&src).unwrap();
-
         if move_subdirs {
             copy_dir_all(&dest).unwrap();
         }
-
-        Some(true)
+        true
     } else {
         let mut file = File::open(&src).unwrap();
         compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
         fs::remove_file(&src).unwrap();
-
         if move_subdirs {
             copy_dir_all(&dest).unwrap();
         }
-
-        Some(true)
+        true
     }
 }
 
@@ -145,4 +142,24 @@ pub fn wait_for_process(process_name: &str, callback: impl FnOnce() -> bool) -> 
     }
     std::thread::sleep(std::time::Duration::from_millis(100));
     false
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KuroFile {
+    pub url: String,
+    pub path: String,
+    pub hash: String,
+    pub size: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct KuroIndex {
+    pub resource: Vec<KuroResource>
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct KuroResource {
+    pub dest: String,
+    pub md5: String,
+    pub size: u64
 }

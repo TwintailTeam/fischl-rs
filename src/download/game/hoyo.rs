@@ -1,7 +1,7 @@
 use std::path::{Path};
 use crate::download::game::{Game, Hoyo};
 use crate::utils::downloader::Downloader;
-use crate::utils::game::hoyo::{list_integrity_files};
+use crate::utils::game::list_integrity_files;
 
 impl Hoyo for Game {
     fn download(urls: Vec<String>, game_path: String) -> bool {

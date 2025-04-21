@@ -19,39 +19,39 @@ mod tests {
         }
     }*/
     use std::path::Path;
-    use crate::download::Downloader;
-    use crate::download::game::{Game, Hoyo};
-    use crate::utils::{extract_archive, prettify_bytes};
-    use crate::utils::game::hoyo::voice_locale::VoiceLocale;
+    use crate::download::{Compatibility, Extras};
+    use crate::download::game::{Game, Hoyo, Kuro};
+    use crate::utils::{extract_archive, prettify_bytes, KuroFile};
+    use crate::utils::game::VoiceLocale;
 
     #[test]
     fn download_xxmi_test() {
-        let dest = Path::new("/home/tukan/.local/share/com.keqinglauncher.app/extras/xxmi");
-        let success = Downloader::download_xxmi(String::from("SpectrumQT/XXMI-Libs-Package"), dest);
-        if success.is_some() {
-            let finaldest = dest.join("xxmi.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.join("testing").to_str().unwrap().to_string(), false);
+        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/extras/xxmi/testing";
+        let success = Extras::download_xxmi(String::from("SpectrumQT/XXMI-Libs-Package"), dest.to_string(), true);
+        if success {
+            let finaldest = Path::new(&dest).join("xxmi.zip");
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
 
-            if extract.is_some() {
+            if extract {
                 println!("xxmi extracted!");
-                Downloader::download_xxmi_loader(String::from("KeqingLauncher-extras/3dmloader-Package"), &dest.join("testing"), true).unwrap();
             } else {
                 println!("Failed to extract!");
             }
         } else {
-            println!("failed to download extras");
+            println!("failed to download xxmi");
         }
     }
 
     #[test]
     fn download_xxmi_packages_test() {
-        let dest = Path::new("/home/tukan/.local/share/com.keqinglauncher.app/extras/xxmi/testing");
-        let success = Downloader::download_xxmi_packages(String::from("SilentNightSound/GIMI-Package"), String::from("SpectrumQT/SRMI-Package"), String::from("leotorrez/ZZMI-Package"), String::from("SpectrumQT/WWMI-Package"), dest, false);
-        if success.is_some() {
-            extract_archive(dest.join("gimi.zip").to_str().unwrap().to_string(), dest.join("gimi").to_str().unwrap().to_string(), false);
-            extract_archive(dest.join("srmi.zip").to_str().unwrap().to_string(), dest.join("srmi").to_str().unwrap().to_string(), false);
-            extract_archive(dest.join("zzmi.zip").to_str().unwrap().to_string(), dest.join("zzmi").to_str().unwrap().to_string(), false);
-            extract_archive(dest.join("wwmi.zip").to_str().unwrap().to_string(), dest.join("wwmi").to_str().unwrap().to_string(), false);
+        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/extras/xxmi/testing";
+        let success = Extras::download_xxmi_packages(String::from("SilentNightSound/GIMI-Package"), String::from("SpectrumQT/SRMI-Package"), String::from("leotorrez/ZZMI-Package"), String::from("SpectrumQT/WWMI-Package"), dest.to_string(), false);
+        if success {
+            let d = Path::new(&dest);
+            extract_archive(d.join("gimi.zip").to_str().unwrap().to_string(), d.join("gimi").to_str().unwrap().to_string(), false);
+            extract_archive(d.join("srmi.zip").to_str().unwrap().to_string(), d.join("srmi").to_str().unwrap().to_string(), false);
+            extract_archive(d.join("zzmi.zip").to_str().unwrap().to_string(), d.join("zzmi").to_str().unwrap().to_string(), false);
+            extract_archive(d.join("wwmi.zip").to_str().unwrap().to_string(), d.join("wwmi").to_str().unwrap().to_string(), false);
             println!("xxmi packages extracted!")
         } else {
             println!("Failed to download xxmi packages");
@@ -60,15 +60,15 @@ mod tests {
 
     #[test]
     fn download_runner_test() {
-        let dest = Path::new("/home/tukan/.local/share/com.keqinglauncher.app/compatibility/runners/10.4-wine-vanilla");
+        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/compatibility/runners/10.4-wine-vanilla";
         let url = "https://github.com/Kron4ek/Wine-Builds/releases/download/10.4/wine-10.4-amd64.tar.xz";
 
-        let success = Downloader::download_runner(url.to_string(), dest);
-        if success.is_some() {
-            let finaldest = dest.join("runner.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), true);
+        let success = Compatibility::download_runner(url.to_string(), dest.to_string());
+        if success {
+            let finaldest = Path::new(dest).join("runner.zip");
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), true);
 
-            if extract.is_some() {
+            if extract {
                 println!("runner extracted!")
             } else {
                 println!("Failed to extract!");
@@ -80,15 +80,15 @@ mod tests {
 
     #[test]
     fn download_dxvk_test() {
-        let dest = Path::new("/home/tukan/.local/share/com.keqinglauncher.app/compatibility/dxvk/2.6.0-vanilla");
+        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/compatibility/dxvk/2.6.0-vanilla";
         let url = "https://github.com/doitsujin/dxvk/releases/download/v2.6/dxvk-2.6.tar.gz";
 
-        let success = Downloader::download_dxvk(url.to_string(), dest);
-        if success.is_some() {
-            let finaldest = dest.join("dxvk.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), true);
+        let success = Compatibility::download_dxvk(url.to_string(), dest.to_string());
+        if success {
+            let finaldest = Path::new(dest).join("dxvk.zip");
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), true);
 
-            if extract.is_some() {
+            if extract {
                 println!("dxvk extracted!")
             } else {
                 println!("Failed to extract!");
@@ -100,26 +100,26 @@ mod tests {
 
     #[test]
     fn download_fpsunlock_test() {
-        let dest = Path::new("/home/tukan/.local/share/com.keqinglauncher.app/extras/fps_unlock/testing");
+        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/extras/fps_unlock/testing";
 
-        let success = Downloader::download_fps_unlock(String::from("mkrsym1/fpsunlock"), &dest);
-        if success.is_some() {
+        let success = Extras::download_fps_unlock(String::from("mkrsym1/fpsunlock"), dest.to_string());
+        if success {
             println!("fps unlock downloaded!")
         } else {
-            println!("failed to download dxvk");
+            println!("failed to download fpsunlock");
         }
     }
 
     #[test]
     fn download_jadeite_test() {
-        let dest = Path::new("/home/tukan/.local/share/com.keqinglauncher.app/extras/jadeite/testing");
+        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/extras/jadeite/testing";
 
-        let success = Downloader::download_jadeite(String::from("mkrsym1/jadeite"), &dest);
-        if success.is_some() {
-            let finaldest = dest.join("jadeite.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), false);
+        let success = Extras::download_jadeite(String::from("mkrsym1/jadeite"), dest.to_string());
+        if success {
+            let finaldest = Path::new(dest).join("jadeite.zip");
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
 
-            if extract.is_some() {
+            if extract {
                 println!("jadeite extracted!")
             } else {
                 println!("Failed to extract!");
@@ -134,7 +134,7 @@ mod tests {
     fn repair_game_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = Game::repair_game(res_list, path.parse().unwrap(), false);
+        let rep = <Game as Hoyo>::repair_game(res_list, path.parse().unwrap(), false);
         if rep { 
             println!("repair_game success!");
         } else {
@@ -147,7 +147,8 @@ mod tests {
     fn repair_audio_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = Game::repair_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false);
+
+        let rep = <Game as Hoyo>::repair_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false);
         if rep {
             println!("repair_audio success!");
         } else {
@@ -169,7 +170,7 @@ mod tests {
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/Audio_English(US)_5.5.0.zip"));
 
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = Game::download(urls, path.parse().unwrap());
+        let rep = <Game as Hoyo>::download(urls, path.parse().unwrap());
         if rep {
             println!("full_game success!");
         } else {
@@ -181,13 +182,59 @@ mod tests {
     fn download_hdiff_test() {
         let url = "https://autopatchhk.yuanshen.com/client_app/update/hk4e_global/game_5.4.0_5.5.0_hdiff_IlvHovyEdpXnwiCH.zip";
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = Game::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
+        let rep = <Game as Hoyo>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
             println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
         });
         if rep {
             println!("diff_game success!");
         } else {
             println!("diff_game failure!");
+        }
+    }
+
+    // WARNING: Repair game test will take A REALLY LONG time!
+    #[test]
+    fn repair_game_kuro_test() {
+        let index = String::from("https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.2.1/jtXpViyIFgkkhKwyeqWwjoZhEBuXONiu/resource/50004/2.2.1/indexFile.json");
+        let res_list = String::from("https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.2.1/jtXpViyIFgkkhKwyeqWwjoZhEBuXONiu/zip");
+
+        let path = "/games/kuro/wuwa_global/live";
+        let rep = <Game as Kuro>::repair_game(index, res_list, path.parse().unwrap(), false);
+        if rep {
+            println!("repair_game_kuro success!");
+        } else {
+            println!("repair_game_kuro failure!");
+        }
+    }
+    #[test]
+    fn download_fullgame_kuro_test() {
+        let mut urls = Vec::<KuroFile>::new();
+        urls.push(KuroFile { url: "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.2.0/onnOqcAkPIKgfEoFdwJcgRzLRNLohWAm/zip/ClearThirdParty.exe".to_string(), path: "ClearThirdParty.exe".to_string(), hash: "17678258f163d0a7d9413b633f5929ba".to_string(), size: "223032".to_string() });
+        urls.push(KuroFile { url: "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.2.0/onnOqcAkPIKgfEoFdwJcgRzLRNLohWAm/zip/Client/Config/AMD.json".to_string(), path: "Client/Config/AMD.json".to_string(), hash: "16450068a58d20d2057e0ecfcefc55dd".to_string(), size: "6".to_string() });
+        urls.push(KuroFile { url: "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.2.0/onnOqcAkPIKgfEoFdwJcgRzLRNLohWAm/zip/Client/Content/Paks/pakchunk0-WindowsNoEditor.pak".to_string(), path: "Client/Content/Paks/pakchunk0-WindowsNoEditor.pak".to_string(), hash: "d53bc50f56b44d8c6bb72895a9d4d158".to_string(), size: "1074693423".to_string() });
+
+        let path = "/games/kuro/wuwa_global/live/testing";
+        let rep = <Game as Kuro>::download(urls, path.parse().unwrap());
+        if rep {
+            println!("full_game_kuro success!");
+        } else {
+            println!("full_game_kuro failure!");
+        }
+    }
+
+    #[test]
+    fn download_hdiff_kuro_test() {
+        //let url = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.2.0/onnOqcAkPIKgfEoFdwJcgRzLRNLohWAm/resource/50004/2.2.0/2.1.0/resources/2.1.0_2.2.0_1742208942208.krdiff";
+        let url = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.2.0/onnOqcAkPIKgfEoFdwJcgRzLRNLohWAm/resource/50004/2.2.0/2.1.1/resources/2.1.1_2.2.0_1742202752561.krdiff";
+
+        let path = "/games/kuro/wuwa_global/live/testing";
+        let rep = <Game as Kuro>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
+            println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
+        });
+        if rep {
+            println!("diff_game_kuro success!");
+        } else {
+            println!("diff_game_kuro failure!");
         }
     }
 }

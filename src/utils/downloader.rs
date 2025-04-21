@@ -2,7 +2,7 @@ use crate::utils::prettify_bytes;
 use std::io::{Seek};
 use std::path::PathBuf;
 use std::fs::File;
-use reqwest::header::RANGE;
+use reqwest::header::{RANGE, USER_AGENT};
 use reqwest::StatusCode;
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
@@ -45,7 +45,7 @@ impl Downloader {
         let uri = uri.as_ref();
 
         let client = reqwest::blocking::Client::builder().timeout(None).build()?;
-        let header = client.head(uri).send()?;
+        let header = client.head(uri).header(USER_AGENT, "lib/fischl-rs").send()?;
         let length = header.headers().get("content-length").map(|len| len.to_str().unwrap().parse().expect("Requested site's content-length is not a number"));
 
         Ok(Self {
@@ -158,9 +158,8 @@ impl Downloader {
         // Download data
         match file {
             Ok(mut file) => {
-                //let mut chunk: Vec<u8> = Vec::with_capacity(self.chunk_size);
                 let client = reqwest::blocking::Client::builder().timeout(None).build()?;
-                let request = client.head(&self.uri).header(RANGE, format!("bytes={downloaded}-")).send()?;
+                let request = client.head(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send()?;
 
                 // Request content range (downloaded + remained content size)
                 // If finished or overcame: bytes */10611646760
@@ -174,7 +173,7 @@ impl Downloader {
                     }
                 }
 
-                let mut request = client.get(&self.uri).header(RANGE, format!("bytes={downloaded}-")).send()?;
+                let mut request = client.get(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send()?;
 
                 // HTTP 416 = provided range is overcame actual content length (means file is downloaded)
                 // I check this here because HEAD request can return 200 OK while GET - 416

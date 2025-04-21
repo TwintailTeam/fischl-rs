@@ -1,6 +1,6 @@
-pub mod xxmi;
 pub mod compatibility;
-pub mod misc;
+pub mod extras;
 pub mod game;
 
-pub struct Downloader;
+pub struct Extras;
+pub struct Compatibility;
