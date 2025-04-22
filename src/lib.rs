@@ -134,7 +134,7 @@ mod tests {
     fn repair_game_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = <Game as Hoyo>::repair_game(res_list, path.parse().unwrap(), false);
+        let rep = <Game as Hoyo>::repair_game(res_list, path.parse().unwrap(), false, |_, _| {});
         if rep { 
             println!("repair_game success!");
         } else {
@@ -148,7 +148,7 @@ mod tests {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
 
-        let rep = <Game as Hoyo>::repair_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false);
+        let rep = <Game as Hoyo>::repair_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false, |_, _| {});
         if rep {
             println!("repair_audio success!");
         } else {
@@ -170,7 +170,7 @@ mod tests {
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/Audio_English(US)_5.5.0.zip"));
 
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Hoyo>::download(urls, path.parse().unwrap());
+        let rep = <Game as Hoyo>::download(urls, path.parse().unwrap(), |_, _| {});
         if rep {
             println!("full_game success!");
         } else {
@@ -199,7 +199,7 @@ mod tests {
         let res_list = String::from("https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.2.1/jtXpViyIFgkkhKwyeqWwjoZhEBuXONiu/zip");
 
         let path = "/games/kuro/wuwa_global/live";
-        let rep = <Game as Kuro>::repair_game(index, res_list, path.parse().unwrap(), false);
+        let rep = <Game as Kuro>::repair_game(index, res_list, path.parse().unwrap(), false, |_, _| {});
         if rep {
             println!("repair_game_kuro success!");
         } else {
@@ -214,7 +214,7 @@ mod tests {
         urls.push(KuroFile { url: "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.2.0/onnOqcAkPIKgfEoFdwJcgRzLRNLohWAm/zip/Client/Content/Paks/pakchunk0-WindowsNoEditor.pak".to_string(), path: "Client/Content/Paks/pakchunk0-WindowsNoEditor.pak".to_string(), hash: "d53bc50f56b44d8c6bb72895a9d4d158".to_string(), size: "1074693423".to_string() });
 
         let path = "/games/kuro/wuwa_global/live/testing";
-        let rep = <Game as Kuro>::download(urls, path.parse().unwrap());
+        let rep = <Game as Kuro>::download(urls, path.parse().unwrap(), |_, _| {});
         if rep {
             println!("full_game_kuro success!");
         } else {

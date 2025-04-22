@@ -89,10 +89,10 @@ impl IntegrityFile {
         fs::metadata(game_path.into().join(&self.path)).and_then(|metadata| Ok(metadata.len() == self.size)).unwrap_or(false)
     }
 
-    pub(crate) fn repair<T: Into<PathBuf> + std::fmt::Debug>(&self, game_path: T) -> Option<bool> {
+    pub(crate) fn repair<T: Into<PathBuf> + std::fmt::Debug>(&self, game_path: T, progress: impl Fn(u64, u64) + Send + 'static) -> Option<bool> {
         let mut downloader = Downloader::new(format!("{}/{}", self.base_url, self.path.to_string_lossy())).unwrap();
         downloader.continue_downloading = false;
-        let dl = downloader.download(game_path.into().join(&self.path), |_, _| {});
+        let dl = downloader.download(game_path.into().join(&self.path), progress);
 
         if dl.is_ok() {
             Some(true)
