@@ -1,11 +1,16 @@
 use crate::utils::prettify_bytes;
-use std::io::{Seek};
+use std::io::{Seek, Write};
 use std::path::PathBuf;
 use std::fs::File;
 use reqwest::header::{RANGE, USER_AGENT};
 use reqwest::StatusCode;
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
+
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::MetadataExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::fs::MetadataExt;
 
 use super::free_space;
 
@@ -183,11 +188,12 @@ impl Downloader {
                     return Ok(());
                 }
 
-                if let Err(err) = request.copy_to(&mut file) {
+                let writer = request.copy_to(&mut file);
+                if let Err(err) = writer {
                     return Err(DownloadingError::OutputFileError(path, err.to_string()));
                 }
 
-                downloaded += file.metadata().unwrap().len() as usize;
+                downloaded += file.metadata().unwrap().size() as usize;
                 progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
 
             Ok(())
