@@ -170,7 +170,9 @@ mod tests {
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/Audio_English(US)_5.5.0.zip"));
 
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Hoyo>::download(urls, path.parse().unwrap(), |_, _| {});
+        let rep = <Game as Hoyo>::download(urls, path.parse().unwrap(), |current, total| {
+            println!("current: {} | total: {}", current, total);
+        });
         if rep {
             println!("full_game success!");
         } else {

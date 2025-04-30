@@ -183,11 +183,12 @@ impl Downloader {
                     return Ok(());
                 }
 
-                if let Err(err) = request.copy_to(&mut file) {
+                let writer = request.copy_to(&mut file);
+                if let Err(err) = writer {
                     return Err(DownloadingError::OutputFileError(path, err.to_string()));
                 }
 
-                downloaded += file.metadata().unwrap().len() as usize;
+                downloaded += writer? as usize;
                 progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
 
             Ok(())
