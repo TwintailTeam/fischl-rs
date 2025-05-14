@@ -1,6 +1,8 @@
 use std::{fs, io};
-use std::fs::File;
-use std::path::{Path};
+use std::io::{Error, ErrorKind};
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::process::Command;
 use compress_tools::Ownership;
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
@@ -9,6 +11,7 @@ use crate::utils::github_structs::GithubRelease;
 
 pub(crate) mod github_structs;
 pub(crate) mod codeberg_structs;
+pub(crate) mod proto;
 pub mod free_space;
 pub mod game;
 pub mod downloader;
@@ -72,7 +75,7 @@ pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs:
         false
     } else if !dest.exists() {
         fs::create_dir_all(&dest).unwrap();
-        let mut file = File::open(&src).unwrap();
+        let mut file = fs::File::open(&src).unwrap();
         compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
         fs::remove_file(&src).unwrap();
         if move_subdirs {
@@ -80,7 +83,7 @@ pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs:
         }
         true
     } else {
-        let mut file = File::open(&src).unwrap();
+        let mut file = fs::File::open(&src).unwrap();
         compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
         fs::remove_file(&src).unwrap();
         if move_subdirs {
@@ -97,7 +100,7 @@ pub(crate) fn copy_dir_all(dst: impl AsRef<Path>) -> io::Result<()> {
 
         if ty.is_dir() {
             move_dir_and_files(&entry.path(), dst.as_ref())?;
-            fs::remove_dir(entry.path())?;
+            fs::remove_dir_all(entry.path())?;
         }
     }
     Ok(())
@@ -118,6 +121,41 @@ fn move_dir_and_files(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
+pub(crate) fn move_all<'a>(src: &'a Path, dst: &'a Path) -> Pin<Box<dyn Future<Output = io::Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        if !dst.exists() {
+            tokio::fs::create_dir_all(dst).await?;
+        }
+
+        let mut dir = tokio::fs::read_dir(src).await?;
+        while let Some(entry) = dir.next_entry().await? {
+            let entry_path = entry.path();
+            let dest_path = dst.join(entry.file_name());
+            let ty = entry.file_type().await?;
+
+            if ty.is_dir() {
+                move_all(&entry_path, &dest_path).await?;
+                tokio::fs::remove_dir_all(&entry_path).await?;
+            } else if ty.is_file() {
+                tokio::fs::rename(&entry_path, &dest_path).await?;
+            }
+        }
+        Ok(())
+    })
+}
+
+pub(crate) async fn validate_checksum(file: &Path, checksum: String) -> bool {
+    match tokio::fs::File::open(file).await {
+        Ok(f) => {
+            match chksum_md5::async_chksum(f).await {
+                Ok(digest) => digest.to_hex_lowercase() == checksum.to_ascii_lowercase(),
+                Err(_) => false,
+            }
+        }
+        Err(_) => false,
+    }
+}
+
 #[inline]
 pub fn prettify_bytes(bytes: u64) -> String {
     if bytes > 1024 * 1024 * 1024 {
@@ -131,7 +169,7 @@ pub fn prettify_bytes(bytes: u64) -> String {
     }
 }
 
-pub fn wait_for_process(process_name: &str, callback: impl FnOnce() -> bool) -> bool {
+pub fn wait_for_process(process_name: &str, delay_ms: u64, callback: impl FnOnce() -> bool) -> bool {
     let sys = sysinfo::System::new_all();
     let func = callback();
 
@@ -140,8 +178,25 @@ pub fn wait_for_process(process_name: &str, callback: impl FnOnce() -> bool) -> 
             return func;
         }
     }
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
     false
+}
+
+pub fn patch<T: Into<PathBuf> + std::fmt::Debug>(file: T, patch: T, output: T) -> io::Result<()> {
+    // Must have it as a system installed for now
+    let output = Command::new("hpatchz")
+        .arg("-f")
+        .arg(file.into().as_os_str())
+        .arg(patch.into().as_os_str())
+        .arg(output.into().as_os_str())
+        .output()?;
+
+    if String::from_utf8_lossy(output.stdout.as_slice()).contains("patch ok!") {
+        Ok(())
+    } else {
+        let err = String::from_utf8_lossy(&output.stderr);
+        Err(Error::new(ErrorKind::Other, format!("Failed to apply hdiff patch: {err}")))
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]

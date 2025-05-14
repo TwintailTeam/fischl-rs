@@ -20,7 +20,7 @@ mod tests {
     }*/
     use std::path::Path;
     use crate::download::{Compatibility, Extras};
-    use crate::download::game::{Game, Hoyo, Kuro};
+    use crate::download::game::{Game, Hoyo, Kuro, Sophon};
     use crate::utils::{extract_archive, prettify_bytes, KuroFile};
     use crate::utils::game::VoiceLocale;
 
@@ -237,6 +237,39 @@ mod tests {
             println!("diff_game_kuro success!");
         } else {
             println!("diff_game_kuro failure!");
+        }
+    }
+
+    // Sophon
+    #[tokio::test]
+    async fn download_fullgame_hoyo_sophon_test() {
+        let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/q3h361jUEuu0/manifest_6194a90dbfdae455_f2f91f7cf5f869009f4816d8489f66ca";
+        let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/q3h361jUEuu0";
+        let path = "/games/hoyo/hk4e_global/live/testing";
+
+        let rep = <Game as Sophon>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
+            println!("current: {} | total: {}", current, total)
+        }).await;
+        if rep {
+            println!("full_game_sophon success!");
+        } else {
+            println!("full_game_sophon failure!");
+        }
+    }
+
+    #[tokio::test]
+    async fn download_diff_hoyo_sophon_test() {
+        let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/SHvGg74waz43/manifest_4260c944120924aa_f8e484154edc19122cac61fe10c83640";
+        let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/SHvGg74waz43/10016";
+        let path = "/games/hoyo/hk4e_global/live/testing";
+
+        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.5.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
+            println!("current: {} | total: {}", current, total)
+        }).await;
+        if rep {
+            println!("diff_game_sophon success!");
+        } else {
+            println!("diff_game_sophon failure!");
         }
     }
 }

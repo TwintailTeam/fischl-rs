@@ -5,18 +5,27 @@ authors = ["TukanDev"]
 version = "0.1.0"
 edition = "2024"
 
+[build-dependencies]
+prost-build = "0.13.5"
+
 [dependencies]
 serde = {version = "1", features = ["derive"]}
 wincompatlib = {version = "0.7.7", features = ["all"], optional = true}
 compress-tools = {version = "0.15.1", features = [], optional = true}
-reqwest = {version = "0.12.15", features = ["blocking", "json", "stream"], optional = true}
-md-5 = {version = "0.10", optional = true}
-sysinfo = "0.34.2"
+reqwest = {version = "0.12.15", features = ["blocking", "json", "stream"]}
+chksum-md5 = {version = "0.1.0", features = ["async-runtime-tokio"], optional = true}
+prost = {version = "0.13.5", features = [], optional = true}
+async-compression = {version = "0.4.23", features = ["tokio", "zstd"], optional = true}
+tokio = {version = "1.45.0", features = ["macros"]}
+reqwest-middleware = "0.4.2"
+reqwest-retry = "0.7.0"
+sysinfo = "0.35.0"
 serde_json = "1.0.140"
 thiserror = "1.0"
+futures-util = "0.3.31"
 
 [features]
 compat = ["dep:wincompatlib"]
-download = ["dep:compress-tools", "dep:reqwest", "dep:md-5"]
+download = ["dep:compress-tools", "dep:chksum-md5", "dep:async-compression", "dep:prost"]
 
 default = ["download"]

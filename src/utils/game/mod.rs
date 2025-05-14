@@ -1,5 +1,4 @@
 use std::{fs, path::PathBuf};
-use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 use crate::utils::downloader::Downloader;
 use crate::utils::KuroIndex;
@@ -79,7 +78,7 @@ impl IntegrityFile {
             false
         } else {
             match fs::read(&file_path) {
-                Ok(hash) => format!("{:x}", Md5::digest(hash)).to_ascii_lowercase() == self.md5.to_ascii_lowercase(),
+                Ok(hash) => chksum_md5::chksum(hash).unwrap().to_hex_lowercase() == self.md5.to_ascii_lowercase(),
                 Err(_) => false
             }
         }
