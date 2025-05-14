@@ -8,7 +8,7 @@ use crate::download::game::{Game, Hoyo, Sophon};
 use crate::utils::{move_all, patch, validate_checksum};
 use crate::utils::downloader::{AsyncDownloader, Downloader};
 use crate::utils::game::list_integrity_files;
-use crate::utils::proto::{PatchChunk, SophonDiff, SophonManifest};
+use crate::utils::proto::{DeleteFiles, PatchChunk, SophonDiff, SophonManifest};
 
 impl Hoyo for Game {
     fn download(urls: Vec<String>, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
@@ -357,7 +357,20 @@ impl Sophon for Game {
                 }
                 // Move from "staging" to "game_path" and delete "patching" directory
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
-                if moved.is_ok() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
+                if moved.is_ok() {
+                    // Delete all unneeded files after applying the patch and purging the temp directory
+                    tokio::fs::remove_dir_all(p.as_path()).await.unwrap();
+                    let purge_list: Vec<(String, DeleteFiles)> = decoded.delete_files.into_iter().filter(|v, _f| v == version).collect();
+
+                    if !purge_list.is_empty() {
+                        for (_v, df) in purge_list.into_iter() {
+                            for f in df.files {
+                                let fp = mainp.join(&f.name);
+                                tokio::fs::remove_file(&fp).await.unwrap();
+                            }
+                        }
+                    }
+                }
                 true
             } else {
                 false
