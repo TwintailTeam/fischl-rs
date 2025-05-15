@@ -360,13 +360,13 @@ impl Sophon for Game {
                 if moved.is_ok() {
                     // Delete all unneeded files after applying the patch and purging the temp directory
                     tokio::fs::remove_dir_all(p.as_path()).await.unwrap();
-                    let purge_list: Vec<(String, DeleteFiles)> = decoded.delete_files.into_iter().filter(|v, _f| v == version).collect();
+                    let purge_list: Vec<(String, DeleteFiles)> = decoded.delete_files.into_iter().filter(|(v, _f)| version.as_str() == v.as_str()).collect();
 
                     if !purge_list.is_empty() {
                         for (_v, df) in purge_list.into_iter() {
                             for f in df.files {
                                 let fp = mainp.join(&f.name);
-                                tokio::fs::remove_file(&fp).await.unwrap();
+                                if fp.exists() { tokio::fs::remove_file(&fp).await.unwrap(); }
                             }
                         }
                     }

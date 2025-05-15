@@ -150,7 +150,7 @@ impl AsyncDownloader {
         } else {
             let base_folder = path.parent().unwrap();
             if !base_folder.exists() {
-                if let Err(err) = tokio::fs::create_dir_all(base_folder) {
+                if let Err(err) = tokio::fs::create_dir_all(base_folder).await {
                     return Err(DownloadingError::OutputFileError(path, err.to_string()));
                 }
             }
