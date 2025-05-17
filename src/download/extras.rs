@@ -61,7 +61,7 @@ impl Extras {
             let rel = get_github_release(repository.clone());
             if rel.is_some() {
                 let r = rel.unwrap();
-                let filtered = r.assets.into_iter().filter(|a| a.name.to_ascii_lowercase().contains("xxmi-package")).collect::<Vec<&Asset>>();
+                let filtered = r.assets.into_iter().filter(|a| a.name.to_ascii_lowercase().contains("xxmi-package")).collect::<Vec<Asset>>();
                 let u = filtered.get(0).unwrap().clone().browser_download_url.clone();
                 let mut downloader = Downloader::new(u).unwrap();
                 let dl = downloader.download(d.join("xxmi.zip").to_path_buf(), |_, _| {});
