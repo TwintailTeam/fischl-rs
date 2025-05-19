@@ -1,5 +1,5 @@
 use std::{fs, io};
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::Command;
@@ -91,6 +91,21 @@ pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs:
         }
         true
     }
+}
+
+pub fn assemble_multipart_archive(parts: Vec<String>, dest: String) -> bool {
+    let mut af = Vec::new();
+    for p in parts.clone() {
+        let partp = Path::new(&dest).join(&p);
+        let mut file = fs::File::open(&partp).unwrap();
+        file.read_to_end(&mut af).unwrap();
+        fs::remove_file(&partp).unwrap();
+    }
+
+    let first = parts.get(0).unwrap().strip_suffix(".001").unwrap();
+    let fap = Path::new(&dest).join(first);
+    let fin = fs::write(&fap, af);
+    if fin.is_ok() { true } else { false }
 }
 
 pub(crate) fn copy_dir_all(dst: impl AsRef<Path>) -> io::Result<()> {
