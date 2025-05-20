@@ -26,7 +26,7 @@ mod tests {
 
     #[test]
     fn download_xxmi_test() {
-        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/extras/xxmi/testing";
+        let dest = "/home/tukan/.local/share/twintaillauncher/extras/xxmi/testing";
         let success = Extras::download_xxmi(String::from("SpectrumQT/XXMI-Libs-Package"), dest.to_string(), true);
         if success {
             let finaldest = Path::new(&dest).join("xxmi.zip");
@@ -44,7 +44,7 @@ mod tests {
 
     #[test]
     fn download_xxmi_packages_test() {
-        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/extras/xxmi/testing";
+        let dest = "/home/tukan/.local/share/twintaillauncher/extras/xxmi/testing";
         let success = Extras::download_xxmi_packages(String::from("SilentNightSound/GIMI-Package"), String::from("SpectrumQT/SRMI-Package"), String::from("leotorrez/ZZMI-Package"), String::from("SpectrumQT/WWMI-Package"), dest.to_string(), false);
         if success {
             let d = Path::new(&dest);
