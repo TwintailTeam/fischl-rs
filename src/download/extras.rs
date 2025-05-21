@@ -68,7 +68,7 @@ impl Extras {
 
                 if dl.is_ok() {
                     if with_loader {
-                        let rel = get_tukanrepo_release("KeqingLauncher-extras/3dmloader-Package".to_string());
+                        let rel = get_tukanrepo_release("TTL-extras/3dmloader-Package".to_string());
                         if rel.is_some() {
                             let r = rel.unwrap();
                             let u = r.get(0).unwrap().assets.get(0).unwrap().browser_download_url.clone();
