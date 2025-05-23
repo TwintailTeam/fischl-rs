@@ -272,4 +272,20 @@ mod tests {
             println!("diff_game_sophon failure!");
         }
     }
+
+    #[tokio::test]
+    async fn repair_hoyo_sophon_test() {
+        let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/q3h361jUEuu0/manifest_6194a90dbfdae455_f2f91f7cf5f869009f4816d8489f66ca";
+        let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/q3h361jUEuu0";
+        let path = "/games/hoyo/hk4e_global/live";
+
+        let rep = <Game as Sophon>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false,|current, total| {
+            println!("current: {} | total: {}", current, total)
+        }).await;
+        if rep {
+            println!("repair_game_sophon success!");
+        } else {
+            println!("repair_game_sophon failure!");
+        }
+    }
 }
