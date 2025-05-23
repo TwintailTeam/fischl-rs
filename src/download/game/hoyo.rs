@@ -335,10 +335,10 @@ impl Sophon for Game {
 
                                     r.read_exact(&mut buffer).await.unwrap();
                                     output.write_all(&buffer).await.unwrap();
-                                    drop(output);
 
                                     let mut filed = tokio::fs::File::open(&output_path).await.unwrap();
                                     tokio::io::copy(&mut output, &mut filed).await.unwrap();
+                                    drop(output);
                                 } else {
                                     // Chunk is hdiff patchable, patch it
                                     let mut output = tokio::fs::File::create(&diffp).await.unwrap();
