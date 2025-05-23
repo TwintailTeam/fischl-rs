@@ -168,6 +168,7 @@ impl VoiceLocale {
 
             // Folders
             "English(US)" => Some(Self::English),
+            "Chinese(PRC)" => Some(Self::Chinese),
 
             // Codes
             "en-us" => Some(Self::English),
