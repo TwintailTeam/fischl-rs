@@ -8,7 +8,8 @@ pub enum VoiceLocale {
     English,
     Japanese,
     Korean,
-    Chinese
+    Chinese,
+    ChinesePRC
 }
 
 // {"remoteName": "UnityPlayer.dll", "md5": "8c8c3d845b957e4cb84c662bed44d072", "fileSize": 33466104}
@@ -116,7 +117,8 @@ impl VoiceLocale {
             Self::English  => "English",
             Self::Japanese => "Japanese",
             Self::Korean   => "Korean",
-            Self::Chinese  => "Chinese"
+            Self::Chinese  => "Chinese",
+            Self::ChinesePRC => "Chinese"
         }
     }
 
@@ -129,7 +131,8 @@ impl VoiceLocale {
             Self::English  => "en-us",
             Self::Japanese => "ja-jp",
             Self::Korean   => "ko-kr",
-            Self::Chinese  => "zh-cn"
+            Self::Chinese  => "zh-cn",
+            Self::ChinesePRC => "zh-cn"
         }
     }
 
@@ -142,7 +145,8 @@ impl VoiceLocale {
             Self::English  => "English(US)",
             Self::Japanese => "Japanese",
             Self::Korean   => "Korean",
-            Self::Chinese  => "Chinese"
+            Self::Chinese  => "Chinese",
+            Self::ChinesePRC => "Chinese(PRC)"
         }
     }
 
@@ -168,14 +172,13 @@ impl VoiceLocale {
 
             // Folders
             "English(US)" => Some(Self::English),
-            "Chinese(PRC)" => Some(Self::Chinese),
+            "Chinese(PRC)" => Some(Self::ChinesePRC),
 
             // Codes
             "en-us" => Some(Self::English),
             "ja-jp" => Some(Self::Japanese),
             "ko-kr" => Some(Self::Korean),
             "zh-cn" => Some(Self::Chinese),
-
             _ => None
         }
     }
