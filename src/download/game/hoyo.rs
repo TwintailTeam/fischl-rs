@@ -306,11 +306,12 @@ impl Sophon for Game {
                     // File has patches to apply
                     if !filtered.is_empty() {
                         for (_v, chunk) in filtered.into_iter() {
-                            let output_path = output_path.clone();
+                            let mut output_path = output_path.clone();
 
                             let pn = chunk.patch_name;
                             let chunkp = chunks.join(pn.clone());
                             let diffp = chunks.join(format!("{}.hdiff", chunk.patch_md5));
+                            let tmpp = chunks.join(format!("{}.tmp", chunk.patch_md5));
 
                             let mut dl = AsyncDownloader::new(format!("{chunk_base}/{pn}").to_string()).await.unwrap();
                             let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
@@ -323,24 +324,41 @@ impl Sophon for Game {
                                     list.push(chunkp.clone());
                                 }
 
-                                // Chunk parsing
-                                let mut output = tokio::fs::File::create(&diffp).await.unwrap();
-                                let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+                                if chunk.original_filename.is_empty() {
+                                    // Chunk is not a hdiff patchable, copy it over
+                                    let mut output = tokio::fs::File::create(&tmpp).await.unwrap();
+                                    let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
 
-                                chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
-                                let mut r = chunk_file.take(chunk.patch_length);
-                                let mut buffer = vec![0u8; chunk.patch_length as usize];
+                                    chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                    let mut r = chunk_file.take(chunk.patch_length);
+                                    let mut buffer = vec![0u8; chunk.patch_length as usize];
 
-                                r.read_exact(&mut buffer).await.unwrap();
-                                output.write_all(&buffer).await.unwrap();
-                                drop(output);
+                                    r.read_exact(&mut buffer).await.unwrap();
+                                    output.write_all(&buffer).await.unwrap();
+                                    drop(output);
 
-                                // Apply hdiff
-                                // PS: User needs hdiffpatch installed on their system otherwise it won't work for now
-                                let of = mainp.join(&chunk.original_filename);
-                                tokio::task::spawn_blocking(move || {
-                                    if let Err(_) = patch(&of, &diffp, &output_path) {}
-                                });
+                                    let mut filed = tokio::fs::File::open(&output_path).await.unwrap();
+                                    tokio::io::copy(&mut output, &mut filed).await.unwrap();
+                                } else {
+                                    // Chunk is hdiff patchable, patch it
+                                    let mut output = tokio::fs::File::create(&diffp).await.unwrap();
+                                    let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+
+                                    chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                    let mut r = chunk_file.take(chunk.patch_length);
+                                    let mut buffer = vec![0u8; chunk.patch_length as usize];
+
+                                    r.read_exact(&mut buffer).await.unwrap();
+                                    output.write_all(&buffer).await.unwrap();
+                                    drop(output);
+
+                                    // Apply hdiff
+                                    // PS: User needs hdiffpatch installed on their system otherwise it won't work for now
+                                    let of = mainp.join(&chunk.original_filename);
+                                    tokio::task::spawn_blocking(move || {
+                                        if let Err(_) = patch(&of, &diffp, &output_path) {}
+                                    });
+                                }
                             }
                         }
                     }
