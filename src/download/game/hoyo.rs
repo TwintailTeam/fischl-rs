@@ -193,11 +193,11 @@ impl Sophon for Game {
                                 let mut dl = AsyncDownloader::new(format!("{cb}/{cn}").to_string()).await.unwrap();
                                 let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
 
-                                if dlf.is_ok() {
+                                if dlf.is_ok() && chunkp.exists() {
                                     let fname = file.name.clone().split("/").last().unwrap_or(file.name.clone().as_str()).to_string() + "_" + &*i.to_string() + ".chunk";
                                     let extc = chunkpp.join(&fname);
 
-                                    let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+                                    let c = tokio::fs::OpenOptions::new().write(true).read(true).open(chunkp.as_path()).await.unwrap();
                                     let out = tokio::fs::File::create(extc.as_path()).await.unwrap();
                                     let mut decoder = ZstdDecoder::new(tokio::io::BufReader::new(c));
                                     let mut writer = tokio::io::BufWriter::new(out);
@@ -316,7 +316,7 @@ impl Sophon for Game {
                             let mut dl = AsyncDownloader::new(format!("{chunk_base}/{pn}").to_string()).await.unwrap();
                             let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
 
-                            if dlf.is_ok() {
+                            if dlf.is_ok() && chunkp.exists() {
                                 let r = chunkp.metadata().unwrap().len() == chunk.patch_size;
                                 if r {
                                     let mut list = chunks_list.lock().await;
@@ -465,7 +465,7 @@ impl Sophon for Game {
                                 let mut dl = AsyncDownloader::new(format!("{cb}/{cn}").to_string()).await.unwrap();
                                 let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
 
-                                if dlf.is_ok() {
+                                if dlf.is_ok() && chunkp.exists() {
                                     let fname = cn + ".chunk";
                                     let extc = chunkpp.join(&fname);
 
