@@ -194,13 +194,14 @@ pub fn prettify_bytes(bytes: u64) -> String {
     }
 }
 
-pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, callback: F) -> bool where F: FnOnce() -> bool {
+pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, callback: F) -> bool where F: FnMut(bool) -> bool {
     let mut sys = sysinfo::System::new_all();
 
     for _ in 0..retries {
         sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-        if sys.processes().values().any(|process| process.name() == process_name) {
-            return callback();
+        let found = sys.processes().values().any(|process| process.name() == process_name);
+        if callback(found) {
+            return found;
         }
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
     }
