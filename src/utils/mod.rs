@@ -199,7 +199,15 @@ pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mu
 
     for _ in 0..retries {
         sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-        let found = sys.processes().values().any(|process| process.name() == process_name);
+        let pns = process_name.split(".").collect::<Vec<&str>>();
+        let pn = pns.first().unwrap();
+        let found = sys.processes().values().any(|process| {
+            let apn = process.name().to_str().unwrap();
+            let apns = apn.split(".").collect::<Vec<&str>>();
+            let apnn = apns.first().unwrap();
+
+            apnn == pn
+        });
         if callback(found) {
             return found;
         }
