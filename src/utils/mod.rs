@@ -194,7 +194,7 @@ pub fn prettify_bytes(bytes: u64) -> String {
     }
 }
 
-pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, callback: F) -> bool where F: FnMut(bool) -> bool {
+pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mut callback: F) -> bool where F: FnMut(bool) -> bool {
     let mut sys = sysinfo::System::new_all();
 
     for _ in 0..retries {
