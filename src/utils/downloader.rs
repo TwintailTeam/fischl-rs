@@ -61,8 +61,8 @@ pub struct AsyncDownloader {
 impl AsyncDownloader {
     pub async fn new<T: AsRef<str>>(uri: T) -> Result<Self, reqwest::Error> {
         let uri = uri.as_ref();
-        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(10);
-        let c = reqwest::Client::builder().build()?;
+        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(20);
+        let c = reqwest::Client::builder().pool_max_idle_per_host(10).build()?;
 
         let client = reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build();
         let header = client.head(uri).header(USER_AGENT, "lib/fischl-rs").send().await.unwrap();
@@ -175,8 +175,8 @@ impl AsyncDownloader {
         // Download data
         match file {
             Ok(mut file) => {
-                let retry_policy = ExponentialBackoff::builder().build_with_max_retries(10);
-                let c = reqwest::Client::builder().build()?;
+                let retry_policy = ExponentialBackoff::builder().build_with_max_retries(20);
+                let c = reqwest::Client::builder().pool_max_idle_per_host(10).build()?;
 
                 let client = reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build();
                 let request = client.head(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send().await.unwrap();
@@ -208,13 +208,13 @@ impl AsyncDownloader {
                 while let Some(chunk) = stream.next().await {
                     let data = chunk?;
                     file.write_all(&data).await.unwrap();
+                    downloaded += data.len();
                 }
 
                 if let Err(err) = file.flush().await {
                     return Err(DownloadingError::OutputFileError(path, err.to_string()));
                 }
 
-                downloaded += file.metadata().await.unwrap().size() as usize;
                 progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
 
             Ok(())
