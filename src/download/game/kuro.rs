@@ -1,75 +1,311 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::io::{AsyncReadExt};
 use crate::download::game::{Game, Kuro};
-use crate::utils::downloader::Downloader;
-use crate::utils::game::{list_kuro_integrity_files};
-use crate::utils::KuroFile;
+use crate::utils::downloader::{AsyncDownloader};
+use crate::utils::{move_all, validate_checksum, KuroIndex};
 
 impl Kuro for Game {
-    fn download(urls: Vec<KuroFile>, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
-        if urls.is_empty() || game_path.is_empty() {
-            return false;
-        }
+    async fn download<F>(manifest: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+        if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
 
-        let progress = Arc::new(Mutex::new(progress));
-        for url in urls {
-            let p = progress.clone();
-            let mut downloader = Downloader::new(url.url).unwrap();
-            let file = url.path.to_string();
-            downloader.download(Path::new(game_path.as_str()).to_path_buf().join(&file), move |current, total| {
-                let pl = p.lock().unwrap();
-                pl(current, total);
-            }).unwrap();
+        let p = Path::new(game_path.as_str()).to_path_buf().join("downloading");
+        let client = Arc::new(AsyncDownloader::setup_client().await);
 
-        }
-        true
-    }
+        let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
+        let dll = dl.download(p.clone().join("manifest.json"), |_, _| {}).await;
 
-    fn patch(url: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
-        if url.is_empty() || game_path.is_empty() {
-            return false;
-        }
+        if dll.is_ok() {
+            let mut f = tokio::fs::File::open(p.join("manifest.json").as_path()).await.unwrap();
+            let mut reader = String::new();
+            f.read_to_string(&mut reader).await.unwrap();
+            let files: KuroIndex = serde_json::from_str(&reader).unwrap();
 
-        let mut downloader = Downloader::new(url).unwrap();
-        let file = downloader.get_filename().to_string();
-        let dl = downloader.download(Path::new(game_path.as_str()).to_path_buf().join(&file), progress);
+            let staging = p.join("staging");
+            if !staging.exists() { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
 
-        if dl.is_ok() {
+            let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
+            let progress_counter = Arc::new(AtomicU64::new(0));
+
+            let file_semaphore = Arc::new(tokio::sync::Semaphore::new(50));
+            let mut file_futures = Vec::new();
+            let progress = Arc::new(progress);
+
+            for ff in files.resource.clone() {
+                let file_semaphore = file_semaphore.clone();
+                let file_permit = file_semaphore.acquire_owned().await.unwrap();
+                let progress_counter = progress_counter.clone();
+                let progress = progress.clone();
+                let client = client.clone();
+
+                let spc = staging.clone();
+                let cb = chunk_base.clone();
+
+                let ffut = tokio::task::spawn(async move {
+                    let _permit = file_permit;
+
+                    let progress = progress.clone();
+                    let progress_counter = progress_counter.clone();
+                    let output_path = spc.join(&ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
+                    let valid = validate_checksum(output_path.as_path(), ff.clone().md5.to_ascii_lowercase()).await;
+                    let client = client.clone();
+
+                    // File exists in "staging" directory and checksum is valid skip it
+                    // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
+                    if output_path.exists() && valid { return; } else {
+                        if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                    }
+
+                    let cb = cb.clone();
+                    let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
+                    let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
+                    let dlf = dl.download(output_path.clone(), |_, _| {}).await;
+
+                    if dlf.is_ok() && output_path.exists() {
+                        let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                        if r1 {
+                            progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                            let processed = progress_counter.load(Ordering::SeqCst);
+                            progress(processed, total_bytes);
+                        } else {
+                            // Retry to download if we fail
+                            let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
+                            let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
+                            if dlf1.is_ok() {
+                                let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                                if r2 {
+                                    progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                    let processed = progress_counter.load(Ordering::SeqCst);
+                                    progress(processed, total_bytes);
+                                }
+                            }
+                        }
+                    }
+                });
+                file_futures.push(ffut);
+            }
+            futures_util::future::join_all(file_futures).await;
+            // Move from "staging" to "game_path" and delete "downloading" directory
+            let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
+            if moved.is_ok() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
             true
         } else {
             false
         }
     }
 
-    fn repair_game(index_url: String, res_list: String, game_path: String, is_fast: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
-        let files = list_kuro_integrity_files(index_url, res_list);
+    async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+        if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() || version.is_empty() { return false; }
 
-        if files.is_some() {
-            let f = files.unwrap();
-            let progress = Arc::new(Mutex::new(progress));
+        let p = Path::new(game_path.as_str()).to_path_buf().join("patching");
+        let client = Arc::new(AsyncDownloader::setup_client().await);
 
-            f.iter().for_each(|file| {
-                let p = progress.clone();
-                let path = Path::new(game_path.as_str());
+        let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
+        let dll = dl.download(p.clone().join("manifest.json"), |_, _| {}).await;
 
-                if is_fast {
-                    let rslt= file.fast_verify(path.to_path_buf().clone());
-                    if !rslt {
-                        file.repair(path.to_path_buf(), move |current, total| {
-                            let pl = p.lock().unwrap();
-                            pl(current, total);
-                        });
-                    }
-                } else {
-                    let rslt = file.verify(path.to_path_buf().clone());
-                    if !rslt {
-                        file.repair(path.to_path_buf(), move |current, total| {
-                            let pl = p.lock().unwrap();
-                            pl(current, total);
-                        });
-                    }
+        if dll.is_ok() {
+            let mut f = tokio::fs::File::open(p.join("manifest.json").as_path()).await.unwrap();
+            let mut reader = String::new();
+            f.read_to_string(&mut reader).await.unwrap();
+            let files: KuroIndex = serde_json::from_str(&reader).unwrap();
+
+            let staging = p.join("staging");
+            if !staging.exists() { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
+
+            let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
+            let progress_counter = Arc::new(AtomicU64::new(0));
+
+            let file_semaphore = Arc::new(tokio::sync::Semaphore::new(50));
+            let mut file_futures = Vec::new();
+            let progress = Arc::new(progress);
+
+            if files.patch_infos.is_some() {
+                // has krdiff
+                true
+            } else {
+                // No krdiff download every resource available
+                // TODO: Add delete_files
+                for ff in files.resource.clone() {
+                    let file_semaphore = file_semaphore.clone();
+                    let file_permit = file_semaphore.acquire_owned().await.unwrap();
+                    let progress_counter = progress_counter.clone();
+                    let progress = progress.clone();
+                    let client = client.clone();
+
+                    let spc = staging.clone();
+                    let cb = chunk_base.clone();
+
+                    let ffut = tokio::task::spawn(async move {
+                        let _permit = file_permit;
+
+                        let progress = progress.clone();
+                        let progress_counter = progress_counter.clone();
+                        let output_path = spc.join(&ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
+                        let valid = validate_checksum(output_path.as_path(), ff.clone().md5.to_ascii_lowercase()).await;
+                        let client = client.clone();
+
+                        // File exists in "staging" directory and checksum is valid skip it
+                        // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
+                        if output_path.exists() && valid { return; } else {
+                            if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                        }
+
+                        let cb = cb.clone();
+                        let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
+                        let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
+                        let dlf = dl.download(output_path.clone(), |_, _| {}).await;
+
+                        if dlf.is_ok() && output_path.exists() {
+                            let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                            if r1 {
+                                progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                let processed = progress_counter.load(Ordering::SeqCst);
+                                progress(processed, total_bytes);
+                            } else {
+                                // Retry to download if we fail
+                                let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
+                                let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
+                                if dlf1.is_ok() {
+                                    let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                                    if r2 {
+                                        progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                        let processed = progress_counter.load(Ordering::SeqCst);
+                                        progress(processed, total_bytes);
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    file_futures.push(ffut);
                 }
-            });
+                futures_util::future::join_all(file_futures).await;
+                // Move from "staging" to "game_path" and delete "downloading" directory
+                let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
+                if moved.is_ok() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
+                true
+            }
+        } else {
+            false
+        }
+    }
+
+    async fn repair_game<F>(manifest: String, chunk_base: String, game_path: String, is_fast: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+        if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
+
+        let mainp = Path::new(game_path.as_str());
+        let p = mainp.to_path_buf().join("repairing");
+        let client = Arc::new(AsyncDownloader::setup_client().await);
+
+        let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
+        let dll = dl.download(p.clone().join("manifest.json"), |_, _| {}).await;
+
+        if dll.is_ok() {
+            let mut f = tokio::fs::File::open(p.join("manifest.json").as_path()).await.unwrap();
+            let mut reader = String::new();
+            f.read_to_string(&mut reader).await.unwrap();
+            let files: KuroIndex = serde_json::from_str(&reader).unwrap();
+
+            let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
+            let progress_counter = Arc::new(AtomicU64::new(0));
+
+            let file_semaphore = Arc::new(tokio::sync::Semaphore::new(50));
+            let mut file_futures = Vec::new();
+            let progress = Arc::new(progress);
+
+            for ff in files.resource.clone() {
+                let file_semaphore = file_semaphore.clone();
+                let file_permit = file_semaphore.acquire_owned().await.unwrap();
+                let progress_counter = progress_counter.clone();
+                let progress = progress.clone();
+                let client = client.clone();
+
+                let mainp = mainp.join(&ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
+                let cb = chunk_base.clone();
+
+                let ffut = tokio::task::spawn(async move {
+                    let _permit = file_permit;
+
+                    let output_path = mainp.clone();
+                    let progress = progress.clone();
+                    let progress_counter = progress_counter.clone();
+                    let client = client.clone();
+
+                    if output_path.exists() {
+                        let valid = if is_fast { output_path.metadata().unwrap().len() == ff.size } else { validate_checksum(&output_path, ff.md5.clone()).await };
+                        if !valid {
+                            if output_path.exists() {
+                                tokio::fs::remove_file(&output_path).await.unwrap();
+                                if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                            } else {
+                                if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                            }
+
+                            let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
+                            let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
+                            let dlf = dl.download(output_path.clone(), |_, _| {}).await;
+
+                            if dlf.is_ok() && output_path.exists() {
+                                let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                                if r1 {
+                                    progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                    let processed = progress_counter.load(Ordering::SeqCst);
+                                    progress(processed, total_bytes);
+                                } else {
+                                    // Retry to download if we fail
+                                    let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
+                                    let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
+                                    if dlf1.is_ok() {
+                                        let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                                        if r2 {
+                                            progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                            let processed = progress_counter.load(Ordering::SeqCst);
+                                            progress(processed, total_bytes);
+                                        }
+                                    }
+
+                                }
+                            }
+                        } else { return; }
+                    } else {
+                        if output_path.exists() {
+                            tokio::fs::remove_file(&output_path).await.unwrap();
+                            if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                        } else {
+                            if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                        }
+
+                        let cb = cb.clone();
+                        let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
+                        let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
+                        let dlf = dl.download(output_path.clone(), |_, _| {}).await;
+
+                        if dlf.is_ok() && output_path.exists() {
+                            let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                            if r1 {
+                                progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                let processed = progress_counter.load(Ordering::SeqCst);
+                                progress(processed, total_bytes);
+                            } else {
+                                // Retry to download if we fail
+                                let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
+                                let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
+                                if dlf1.is_ok() {
+                                    let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                                    if r2 {
+                                        progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                        let processed = progress_counter.load(Ordering::SeqCst);
+                                        progress(processed, total_bytes);
+                                    }
+                                }
+
+                            }
+                        }
+                    }
+                });
+                file_futures.push(ffut);
+            }
+            futures_util::future::join_all(file_futures).await;
             true
         } else {
             false

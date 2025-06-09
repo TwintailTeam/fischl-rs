@@ -11,12 +11,14 @@ use reqwest_retry::RetryTransientMiddleware;
 use super::free_space;
 use futures_util::StreamExt;
 use tokio::io::AsyncSeekExt;
+use std::sync::Arc;
+use reqwest_middleware::ClientWithMiddleware;
+use tokio::io::AsyncWriteExt;
 
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::MetadataExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::fs::MetadataExt;
-use tokio::io::AsyncWriteExt;
 
 pub const DEFAULT_CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
 
@@ -55,16 +57,21 @@ pub struct AsyncDownloader {
     length: Option<u64>,
     pub chunk_size: usize,
     pub continue_downloading: bool,
-    pub check_free_space: bool
+    pub check_free_space: bool,
+    client: Arc<ClientWithMiddleware>
 }
 
 impl AsyncDownloader {
-    pub async fn new<T: AsRef<str>>(uri: T) -> Result<Self, reqwest::Error> {
-        let uri = uri.as_ref();
-        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(20);
-        let c = reqwest::Client::builder().pool_max_idle_per_host(10).build()?;
-
+    pub async fn setup_client() -> ClientWithMiddleware {
+        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(30);
+        let c = reqwest::Client::builder().pool_max_idle_per_host(30).build().unwrap();
         let client = reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build();
+        client
+    }
+
+    pub async fn new<T: AsRef<str>>(client: Arc<ClientWithMiddleware>, uri: T) -> Result<Self, reqwest::Error> {
+        let uri = uri.as_ref();
+
         let header = client.head(uri).header(USER_AGENT, "lib/fischl-rs").send().await.unwrap();
         let length = header.headers().get("content-length").map(|len| len.to_str().unwrap().parse().expect("Requested site's content-length is not a number"));
 
@@ -73,7 +80,8 @@ impl AsyncDownloader {
             length,
             chunk_size: DEFAULT_CHUNK_SIZE,
             continue_downloading: true,
-            check_free_space: true
+            check_free_space: true,
+            client: client
         })
     }
 
@@ -175,11 +183,7 @@ impl AsyncDownloader {
         // Download data
         match file {
             Ok(mut file) => {
-                let retry_policy = ExponentialBackoff::builder().build_with_max_retries(20);
-                let c = reqwest::Client::builder().pool_max_idle_per_host(10).build()?;
-
-                let client = reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build();
-                let request = client.head(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send().await.unwrap();
+                let request = self.client.head(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send().await.unwrap();
 
                 // Request content range (downloaded + remained content size)
                 // If finished or overcame: bytes */10611646760
@@ -193,7 +197,7 @@ impl AsyncDownloader {
                     }
                 }
 
-                let request = client.get(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send().await.unwrap();
+                let request = self.client.get(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send().await.unwrap();
 
                 // HTTP 416 = provided range is overcame actual content length (means file is downloaded)
                 // I check this here because HEAD request can return 200 OK while GET - 416

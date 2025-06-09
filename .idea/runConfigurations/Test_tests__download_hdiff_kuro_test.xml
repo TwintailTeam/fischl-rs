@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Test tests::download_hdiff_kuro_test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="test --package fischl --lib tests::download_hdiff_kuro_test -- --exact" />
+    <option name="command" value="test --package fischl --lib tests::download_hdiff_kuro_test -- --exact --nocapture" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />
     <option name="emulateTerminal" value="true" />

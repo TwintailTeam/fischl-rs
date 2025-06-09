@@ -148,9 +148,7 @@ fn move_dir_and_files(src: &Path, dst: &Path) -> io::Result<()> {
 
 pub(crate) fn move_all<'a>(src: &'a Path, dst: &'a Path) -> Pin<Box<dyn Future<Output = io::Result<()>> + Send + 'a>> {
     Box::pin(async move {
-        if !dst.exists() {
-            tokio::fs::create_dir_all(dst).await?;
-        }
+        if !dst.exists() { tokio::fs::create_dir_all(dst).await?; }
 
         let mut dir = tokio::fs::read_dir(src).await?;
         while let Some(entry) = dir.next_entry().await? {
@@ -233,22 +231,34 @@ pub fn patch<T: Into<PathBuf> + std::fmt::Debug>(file: T, patch: T, output: T) -
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct KuroFile {
-    pub url: String,
-    pub path: String,
-    pub hash: String,
-    pub size: String,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct KuroIndex {
+    pub resource: Vec<KuroResource>,
+    pub delete_files: Option<Vec<String>>,
+    #[serde(rename = "patchInfos", default)]
+    pub patch_infos: Option<Vec<KuroPatchEntry>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct KuroIndex {
-    pub resource: Vec<KuroResource>
+pub struct KuroPatchEntry {
+    pub dest: String,
+    pub entries: Vec<KuroResource>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct KuroResource {
     pub dest: String,
     pub md5: String,
-    pub size: u64
+    pub sample_hash: Option<String>,
+    pub size: u64,
+    pub from_folder: Option<String>,
+    #[serde(rename = "chunkInfos", default)]
+    pub chunk_infos: Option<Vec<KuroChunkInfos>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct KuroChunkInfos {
+    pub start: u64,
+    pub end: u64,
+    pub md5: String,
 }
