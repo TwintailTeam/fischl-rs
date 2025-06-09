@@ -126,7 +126,6 @@ impl Kuro for Game {
                 true
             } else {
                 // No krdiff download every resource available
-                // TODO: Add delete_files
                 for ff in files.resource.clone() {
                     let file_semaphore = file_semaphore.clone();
                     let file_permit = file_semaphore.acquire_owned().await.unwrap();
