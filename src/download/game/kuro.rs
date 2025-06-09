@@ -98,7 +98,8 @@ impl Kuro for Game {
     async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() || version.is_empty() { return false; }
 
-        let p = Path::new(game_path.as_str()).to_path_buf().join("patching");
+        let mainp = Path::new(game_path.as_str());
+        let p = mainp.join("patching");
         let client = Arc::new(AsyncDownloader::setup_client().await);
 
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
@@ -180,9 +181,21 @@ impl Kuro for Game {
                     file_futures.push(ffut);
                 }
                 futures_util::future::join_all(file_futures).await;
-                // Move from "staging" to "game_path" and delete "downloading" directory
+                // Move from "staging" to "game_path" and delete "patching" directory
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
-                if moved.is_ok() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
+                if moved.is_ok() {
+                    tokio::fs::remove_dir_all(p.as_path()).await.unwrap();
+
+                    if files.delete_files.is_some() {
+                        let dfl = files.delete_files.unwrap();
+                        if !dfl.is_empty() {
+                            for df in dfl {
+                                let dfp = mainp.join(&df);
+                                if dfp.exists() { tokio::fs::remove_file(&dfp).await.unwrap(); }
+                            }
+                        }
+                    }
+                }
                 true
             }
         } else {
