@@ -478,10 +478,8 @@ impl Sophon for Game {
 
                 if p.join(&file).exists() { tokio::fs::remove_file(p.join(&file).as_path()).await.unwrap(); }
                 let chunks = p.join("chunk");
-                let staging = p.join("staging");
 
                 if !chunks.exists() { tokio::fs::create_dir_all(chunks.clone()).await.unwrap(); }
-                if !staging.exists() { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
                 let decoded = tokio::task::spawn_blocking(move || {
                     SophonManifest::decode(&mut std::io::Cursor::new(&file_contents)).unwrap()
                 }).await.unwrap();
@@ -498,8 +496,8 @@ impl Sophon for Game {
                 for ff in decoded.files.clone() {
                     let file_semaphore = file_semaphore.clone();
                     let chunk_semaphore = chunk_semaphore.clone();
+                    let file_permit = file_semaphore.acquire_owned().await.unwrap();
 
-                    let spc = staging.clone();
                     let outputp = mainp.join(&ff.name);
                     let chunkpp = chunks.clone();
                     let cb = chunk_base.clone();
@@ -509,7 +507,7 @@ impl Sophon for Game {
                     let progress_counter = progress_counter.clone();
 
                     let ffut = tokio::task::spawn(async move {
-                        let _permit = file_semaphore.acquire().await.unwrap();
+                        let _permit = file_permit;
                         let progress = progress.clone();
                         let progress_counter = progress_counter.clone();
                         let client = client.clone();
@@ -517,9 +515,11 @@ impl Sophon for Game {
                         if ff.r#type == 64 { return; }
 
                         if !outputp.exists() {
-                            let staged = spc.join(&ff.name);
-                            if staged.exists() { return; } else {
-                                if let Some(parent) = staged.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                            if outputp.exists() {
+                                tokio::fs::remove_file(&outputp).await.unwrap();
+                                if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                            } else {
+                                if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                             }
 
                             let chunks_list = Arc::new(tokio::sync::Mutex::new(Vec::new()));
@@ -527,6 +527,7 @@ impl Sophon for Game {
 
                             for (i, chunk) in ff.chunks.iter().enumerate() {
                                 let chunk_semaphore = chunk_semaphore.clone();
+                                let chunk_perm = chunk_semaphore.acquire_owned().await.unwrap();
                                 let cc = chunk.clone();
                                 let chunkpp = chunkpp.clone();
                                 let cb = cb.clone();
@@ -534,7 +535,7 @@ impl Sophon for Game {
                                 let client = client.clone();
 
                                 let fut = tokio::task::spawn(async move {
-                                    let _chunk_permit = chunk_semaphore.acquire().await.unwrap();
+                                    let _chunk_permit = chunk_perm;
                                     let cn = cc.chunk_name.clone();
                                     let chunkp = chunkpp.join(cn.clone());
 
@@ -600,17 +601,19 @@ impl Sophon for Game {
                         } else {
                             let valid = if is_fast { outputp.metadata().unwrap().len() == ff.size as u64 } else { validate_checksum(&outputp, ff.md5.to_ascii_lowercase()).await };
                             if !valid {
-                                let staged = spc.join(&ff.name);
-                                if staged.exists() { return; } else {
-                                    if let Some(parent) = staged.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                                if outputp.exists() {
+                                    tokio::fs::remove_file(&outputp).await.unwrap();
+                                    if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                                } else {
+                                    if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                                 }
 
-                                let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(120));
                                 let chunks_list = Arc::new(tokio::sync::Mutex::new(Vec::new()));
                                 let mut chunk_futures = Vec::new();
 
                                 for (i, chunk) in ff.chunks.iter().enumerate() {
                                     let chunk_semaphore = chunk_semaphore.clone();
+                                    let chunk_perm = chunk_semaphore.acquire_owned().await.unwrap();
                                     let cc = chunk.clone();
                                     let chunkpp = chunkpp.clone();
                                     let cb = cb.clone();
@@ -618,7 +621,7 @@ impl Sophon for Game {
                                     let client = client.clone();
 
                                     let fut = tokio::task::spawn(async move {
-                                        let _chunk_permit = chunk_semaphore.acquire().await.unwrap();
+                                        let _chunk_permit = chunk_perm;
                                         let cn = cc.chunk_name.clone();
                                         let chunkp = chunkpp.join(cn.clone());
                                         let client = client.clone();
@@ -688,9 +691,6 @@ impl Sophon for Game {
                     file_futures.push(ffut);
                 }
                 futures_util::future::join_all(file_futures).await;
-                // Move from "staging" to "game_path" and delete "repairing" directory
-                let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
-                if moved.is_ok() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
                 true
             } else {
                 false
