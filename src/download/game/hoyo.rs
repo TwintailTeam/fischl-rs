@@ -157,11 +157,11 @@ impl Sophon for Game {
                     let total_bytes: u64 = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.size as u64).sum();
                     let progress_counter = Arc::new(AtomicU64::new(0));
 
-                    let file_semaphore = Arc::new(tokio::sync::Semaphore::new(7));
+                    let file_semaphore = Arc::new(tokio::sync::Semaphore::new(5));
                     let mut file_futures = Vec::new();
                     let progress = Arc::new(progress);
 
-                    let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(120));
+                    let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(100));
 
                     for file in decoded.files.clone() {
                         let file_semaphore = file_semaphore.clone();
@@ -487,11 +487,11 @@ impl Sophon for Game {
                 let total_bytes: u64 = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.size as u64).sum();
                 let progress_counter = Arc::new(AtomicU64::new(0));
 
-                let file_semaphore = Arc::new(tokio::sync::Semaphore::new(7));
+                let file_semaphore = Arc::new(tokio::sync::Semaphore::new(5));
                 let mut file_futures = Vec::new();
                 let progress = Arc::new(progress);
 
-                let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(120));
+                let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(100));
 
                 for ff in decoded.files.clone() {
                     let file_semaphore = file_semaphore.clone();
