@@ -189,7 +189,12 @@ impl Sophon for Game {
 
                             // File exists in "staging" directory and checksum is valid skip it
                             // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
-                            if output_path.exists() && valid { return; } else {
+                            if output_path.exists() && valid {
+                                progress_counter.fetch_add(file.size as u64, Ordering::SeqCst);
+                                let processed = progress_counter.load(Ordering::SeqCst);
+                                progress(processed, total_bytes);
+                                return;
+                            } else {
                                 if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                             }
 
@@ -339,7 +344,12 @@ impl Sophon for Game {
 
                     // File exists in "staging" directory and checksum is valid skip it
                     // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
-                    if output_path.exists() && valid { continue; } else {
+                    if output_path.exists() && valid {
+                        progress_counter.fetch_add(file.size, Ordering::SeqCst);
+                        let processed = progress_counter.load(Ordering::SeqCst);
+                        progress(processed, total_bytes);
+                        continue;
+                    } else {
                         if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                     }
 
@@ -422,12 +432,13 @@ impl Sophon for Game {
                             if c.exists() { tokio::fs::remove_file(c).await.unwrap(); }
                         }
                         list.clear();
-
                         progress_counter.fetch_add(file.size, Ordering::SeqCst);
                         let processed = progress_counter.load(Ordering::SeqCst);
                         progress(processed, total_bytes);
                     }
                 }
+                // All files are complete make sure we report done just in case
+                progress(total_bytes, total_bytes);
                 // Move from "staging" to "game_path" and delete "patching" directory
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
                 if moved.is_ok() {
@@ -687,7 +698,12 @@ impl Sophon for Game {
                                         }
                                     }
                                 }
-                            } else { return; }
+                            } else {
+                                progress_counter.fetch_add(ff.size as u64, Ordering::SeqCst);
+                                let processed = progress_counter.load(Ordering::SeqCst);
+                                progress(processed, total_bytes);
+                                return;
+                            }
                         }
                     });
                     file_futures.push(ffut);

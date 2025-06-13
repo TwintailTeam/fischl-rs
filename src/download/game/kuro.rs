@@ -53,7 +53,12 @@ impl Kuro for Game {
 
                     // File exists in "staging" directory and checksum is valid skip it
                     // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
-                    if output_path.exists() && valid { return; } else {
+                    if output_path.exists() && valid {
+                        progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                        let processed = progress_counter.load(Ordering::SeqCst);
+                        progress(processed, total_bytes);
+                        return;
+                    } else {
                         if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                     }
 
@@ -149,7 +154,12 @@ impl Kuro for Game {
 
                         // File exists in "staging" directory and checksum is valid skip it
                         // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
-                        if output_path.exists() && valid { return; } else {
+                        if output_path.exists() && valid {
+                            progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                            let processed = progress_counter.load(Ordering::SeqCst);
+                            progress(processed, total_bytes);
+                            return;
+                        } else {
                             if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                         }
 
@@ -188,7 +198,6 @@ impl Kuro for Game {
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
                 if moved.is_ok() {
                     tokio::fs::remove_dir_all(p.as_path()).await.unwrap();
-
                     if files.delete_files.is_some() {
                         let dfl = files.delete_files.unwrap();
                         if !dfl.is_empty() {
@@ -282,7 +291,12 @@ impl Kuro for Game {
 
                                 }
                             }
-                        } else { return; }
+                        } else {
+                            progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                            let processed = progress_counter.load(Ordering::SeqCst);
+                            progress(processed, total_bytes);
+                            return;
+                        }
                     } else {
                         if output_path.exists() {
                             tokio::fs::remove_file(&output_path).await.unwrap();
