@@ -86,6 +86,8 @@ impl Kuro for Game {
                 file_futures.push(ffut);
             }
             futures_util::future::join_all(file_futures).await;
+            // All files are complete make sure we report done just in case
+            progress(total_bytes, total_bytes);
             // Move from "staging" to "game_path" and delete "downloading" directory
             let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
             if moved.is_ok() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
@@ -180,6 +182,8 @@ impl Kuro for Game {
                     file_futures.push(ffut);
                 }
                 futures_util::future::join_all(file_futures).await;
+                // All files are complete make sure we report done just in case
+                progress(total_bytes, total_bytes);
                 // Move from "staging" to "game_path" and delete "patching" directory
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
                 if moved.is_ok() {
@@ -318,6 +322,8 @@ impl Kuro for Game {
                 file_futures.push(ffut);
             }
             futures_util::future::join_all(file_futures).await;
+            // All files are complete make sure we report done just in case
+            progress(total_bytes, total_bytes);
             true
         } else {
             false

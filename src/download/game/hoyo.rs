@@ -157,11 +157,11 @@ impl Sophon for Game {
                     let total_bytes: u64 = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.size as u64).sum();
                     let progress_counter = Arc::new(AtomicU64::new(0));
 
-                    let file_semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+                    let file_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
                     let mut file_futures = Vec::new();
                     let progress = Arc::new(progress);
 
-                    let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(100));
+                    let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(200));
 
                     for file in decoded.files.clone() {
                         let file_semaphore = file_semaphore.clone();
@@ -279,6 +279,8 @@ impl Sophon for Game {
                         file_futures.push(ffut);
                     }
                     futures_util::future::join_all(file_futures).await;
+                    // All files are complete make sure we report done just in case
+                    progress(total_bytes, total_bytes);
                     // Move from "staging" to "game_path" and delete "downloading" directory
                     let moved = move_all(Path::new(&staging), Path::new(&game_path)).await;
                     if moved.is_ok() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
@@ -487,11 +489,11 @@ impl Sophon for Game {
                 let total_bytes: u64 = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.size as u64).sum();
                 let progress_counter = Arc::new(AtomicU64::new(0));
 
-                let file_semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+                let file_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
                 let mut file_futures = Vec::new();
                 let progress = Arc::new(progress);
 
-                let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(100));
+                let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(200));
 
                 for ff in decoded.files.clone() {
                     let file_semaphore = file_semaphore.clone();
@@ -691,6 +693,8 @@ impl Sophon for Game {
                     file_futures.push(ffut);
                 }
                 futures_util::future::join_all(file_futures).await;
+                // All files are complete make sure we report done just in case
+                progress(total_bytes, total_bytes);
                 true
             } else {
                 false
