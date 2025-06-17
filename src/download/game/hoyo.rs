@@ -8,7 +8,7 @@ use futures_util::StreamExt;
 use prost::Message;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use crate::download::game::{Game, Hoyo, Sophon};
-use crate::utils::{move_all, patch, validate_checksum};
+use crate::utils::{hpatchz, move_all, validate_checksum};
 use crate::utils::downloader::{AsyncDownloader, Downloader};
 use crate::utils::game::list_integrity_files;
 use crate::utils::proto::{DeleteFiles, PatchChunk, SophonDiff, SophonManifest};
@@ -289,7 +289,7 @@ impl Sophon for Game {
             }
     }
 
-    async fn patch(manifest: String, version: String, chunk_base: String, game_path: String, preloaded: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+    async fn patch(manifest: String, version: String, chunk_base: String, game_path: String, hpatchz_path: String, preloaded: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str()).to_path_buf();
@@ -407,7 +407,7 @@ impl Sophon for Game {
                                     // PS: User needs hdiffpatch installed on their system otherwise it won't work for now
                                     let of = mainp.join(&chunk.original_filename);
                                     tokio::task::spawn_blocking(move || {
-                                        if let Err(_) = patch(&of, &diffp, &output_path) {}
+                                        if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {}
                                     });
                                 }
                             } else {
@@ -463,7 +463,7 @@ impl Sophon for Game {
                                         // PS: User needs hdiffpatch installed on their system otherwise it won't work for now
                                         let of = mainp.join(&chunk.original_filename);
                                         tokio::task::spawn_blocking(move || {
-                                            if let Err(_) = patch(&of, &diffp, &output_path) {}
+                                            if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {}
                                         });
                                     }
                                 }

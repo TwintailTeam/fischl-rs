@@ -214,18 +214,11 @@ pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mu
     false
 }
 
-pub fn patch<T: Into<PathBuf> + std::fmt::Debug>(file: T, patch: T, output: T) -> io::Result<()> {
-    // Must have it as a system installed for now
-    let output = Command::new("hpatchz")
-        .arg("-f")
-        .arg(file.into().as_os_str())
-        .arg(patch.into().as_os_str())
-        .arg(output.into().as_os_str())
-        .output()?;
+pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, patch: T, output: T) -> io::Result<()> {
+    let output = Command::new(bin_path.as_ref())
+        .arg("-f").arg(file.into().as_os_str()).arg(patch.into().as_os_str()).arg(output.into().as_os_str()).output()?;
 
-    if String::from_utf8_lossy(output.stdout.as_slice()).contains("patch ok!") {
-        Ok(())
-    } else {
+    if String::from_utf8_lossy(output.stdout.as_slice()).contains("patch ok!") { Ok(()) } else {
         let err = String::from_utf8_lossy(&output.stderr);
         Err(Error::new(ErrorKind::Other, format!("Failed to apply hdiff patch: {err}")))
     }

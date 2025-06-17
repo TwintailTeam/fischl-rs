@@ -268,7 +268,7 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
         let path = "/games/hoyo/hk4e_global/live/testing";
 
-        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), true, |current, total| {
+        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, |current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
         if rep {

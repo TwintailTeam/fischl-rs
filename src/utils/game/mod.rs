@@ -1,7 +1,6 @@
 use std::{fs, path::PathBuf};
 use serde::{Deserialize, Serialize};
 use crate::utils::downloader::Downloader;
-use crate::utils::KuroIndex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum VoiceLocale {
@@ -42,27 +41,6 @@ pub fn list_integrity_files(res_list_url: String, file: String) -> Option<Vec<In
         }
 
         Some(files)
-    } else {
-        None
-    }
-}
-
-pub fn list_kuro_integrity_files(index_url: String, res_list_url: String) -> Option<Vec<IntegrityFile>> {
-    let client = reqwest::blocking::Client::new();
-    let response = client.get(index_url.clone()).send();
-
-    if response.is_ok() {
-        let r = response.unwrap();
-        let bv = r.bytes().unwrap().to_vec();
-        let sd: KuroIndex = serde_json::from_slice(&bv).unwrap();
-
-        let rsp: Vec<IntegrityFile> = sd.resource.into_iter().map(|resource| IntegrityFile {
-            path: PathBuf::from(resource.dest.strip_prefix('/').unwrap_or(resource.dest.as_str())),
-            md5: resource.md5,
-            size: resource.size,
-            base_url: res_list_url.clone()
-        }).collect();
-        Some(rsp)
     } else {
         None
     }
