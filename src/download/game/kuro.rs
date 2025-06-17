@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::{Arc};
 use std::sync::atomic::{AtomicU64, Ordering};
+use futures_util::StreamExt;
 use tokio::io::{AsyncReadExt};
 use crate::download::game::{Game, Kuro};
 use crate::utils::downloader::{AsyncDownloader};
@@ -27,29 +28,25 @@ impl Kuro for Game {
 
             let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
             let progress_counter = Arc::new(AtomicU64::new(0));
-
-            let file_semaphore = Arc::new(tokio::sync::Semaphore::new(50));
-            let mut file_futures = Vec::new();
             let progress = Arc::new(progress);
 
-            for ff in files.resource.clone() {
-                let file_semaphore = file_semaphore.clone();
-                let file_permit = file_semaphore.acquire_owned().await.unwrap();
-                let progress_counter = progress_counter.clone();
-                let progress = progress.clone();
+            let file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
+                let chunk_base = chunk_base.clone();
+                let staging = staging.clone();
                 let client = client.clone();
-
-                let spc = staging.clone();
-                let cb = chunk_base.clone();
-
-                let ffut = tokio::task::spawn(async move {
-                    let _permit = file_permit;
-
-                    let progress = progress.clone();
+                let progress = progress.clone();
+                let progress_counter = progress_counter.clone();
+                async move {
                     let progress_counter = progress_counter.clone();
-                    let output_path = spc.join(&ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
-                    let valid = validate_checksum(output_path.as_path(), ff.clone().md5.to_ascii_lowercase()).await;
+                    let progress = progress.clone();
                     let client = client.clone();
+
+                    let spc = staging.clone();
+                    let cb = chunk_base.clone();
+
+                    let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
+                    let output_path = spc.join(filen);
+                    let valid = validate_checksum(output_path.as_path(), ff.clone().md5.to_ascii_lowercase()).await;
 
                     // File exists in "staging" directory and checksum is valid skip it
                     // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
@@ -62,8 +59,6 @@ impl Kuro for Game {
                         if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                     }
 
-                    let cb = cb.clone();
-                    let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
                     let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                     let dlf = dl.download(output_path.clone(), |_, _| {}).await;
 
@@ -87,10 +82,9 @@ impl Kuro for Game {
                             }
                         }
                     }
-                });
-                file_futures.push(ffut);
-            }
-            futures_util::future::join_all(file_futures).await;
+                }
+            })).buffer_unordered(40).collect::<Vec<()>>();
+            file_tasks.await;
             // All files are complete make sure we report done just in case
             progress(total_bytes, total_bytes);
             // Move from "staging" to "game_path" and delete "downloading" directory
@@ -102,7 +96,7 @@ impl Kuro for Game {
         }
     }
 
-    async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+    async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, preloaded: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() || version.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str());
@@ -123,34 +117,30 @@ impl Kuro for Game {
 
             let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
             let progress_counter = Arc::new(AtomicU64::new(0));
-
-            let file_semaphore = Arc::new(tokio::sync::Semaphore::new(50));
-            let mut file_futures = Vec::new();
             let progress = Arc::new(progress);
 
             if files.patch_infos.is_some() {
                 // has krdiff
-                true
+                if preloaded { true } else { true }
             } else {
                 // No krdiff download every resource available
-                for ff in files.resource.clone() {
-                    let file_semaphore = file_semaphore.clone();
-                    let file_permit = file_semaphore.acquire_owned().await.unwrap();
-                    let progress_counter = progress_counter.clone();
-                    let progress = progress.clone();
+                let file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
+                    let chunk_base = chunk_base.clone();
+                    let staging = staging.clone();
                     let client = client.clone();
-
-                    let spc = staging.clone();
-                    let cb = chunk_base.clone();
-
-                    let ffut = tokio::task::spawn(async move {
-                        let _permit = file_permit;
-
-                        let progress = progress.clone();
+                    let progress = progress.clone();
+                    let progress_counter = progress_counter.clone();
+                    async move {
                         let progress_counter = progress_counter.clone();
-                        let output_path = spc.join(&ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
-                        let valid = validate_checksum(output_path.as_path(), ff.clone().md5.to_ascii_lowercase()).await;
+                        let progress = progress.clone();
                         let client = client.clone();
+
+                        let spc = staging.clone();
+                        let cb = chunk_base.clone();
+
+                        let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
+                        let output_path = spc.join(filen);
+                        let valid = validate_checksum(output_path.as_path(), ff.clone().md5.to_ascii_lowercase()).await;
 
                         // File exists in "staging" directory and checksum is valid skip it
                         // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
@@ -163,8 +153,6 @@ impl Kuro for Game {
                             if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                         }
 
-                        let cb = cb.clone();
-                        let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                         let dlf = dl.download(output_path.clone(), |_, _| {}).await;
 
@@ -188,10 +176,9 @@ impl Kuro for Game {
                                 }
                             }
                         }
-                    });
-                    file_futures.push(ffut);
-                }
-                futures_util::future::join_all(file_futures).await;
+                    }
+                })).buffer_unordered(40).collect::<Vec<()>>();
+                file_tasks.await;
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
                 // Move from "staging" to "game_path" and delete "patching" directory
@@ -233,24 +220,17 @@ impl Kuro for Game {
 
             let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
             let progress_counter = Arc::new(AtomicU64::new(0));
-
-            let file_semaphore = Arc::new(tokio::sync::Semaphore::new(50));
-            let mut file_futures = Vec::new();
             let progress = Arc::new(progress);
 
-            for ff in files.resource.clone() {
-                let file_semaphore = file_semaphore.clone();
-                let file_permit = file_semaphore.acquire_owned().await.unwrap();
-                let progress_counter = progress_counter.clone();
-                let progress = progress.clone();
+            let file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
+                let chunk_base = chunk_base.clone();
                 let client = client.clone();
+                let progress = progress.clone();
+                let progress_counter = progress_counter.clone();
+                async move {
+                    let mainp = mainp.join(&ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
 
-                let mainp = mainp.join(&ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
-                let cb = chunk_base.clone();
-
-                let ffut = tokio::task::spawn(async move {
-                    let _permit = file_permit;
-
+                    let cb = chunk_base.clone();
                     let output_path = mainp.clone();
                     let progress = progress.clone();
                     let progress_counter = progress_counter.clone();
@@ -305,7 +285,6 @@ impl Kuro for Game {
                             if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                         }
 
-                        let cb = cb.clone();
                         let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                         let dlf = dl.download(output_path.clone(), |_, _| {}).await;
@@ -328,19 +307,24 @@ impl Kuro for Game {
                                         progress(processed, total_bytes);
                                     }
                                 }
-
                             }
                         }
                     }
-                });
-                file_futures.push(ffut);
-            }
-            futures_util::future::join_all(file_futures).await;
+                }
+            })).buffer_unordered(40).collect::<Vec<()>>();
+            file_tasks.await;
             // All files are complete make sure we report done just in case
             progress(total_bytes, total_bytes);
+            if p.exists() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
             true
         } else {
             false
         }
+    }
+
+    async fn preload(manifest: String, version: String, chunk_base: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+        if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() || version.is_empty() { return false; }
+        progress(1000, 1000);
+        true
     }
 }

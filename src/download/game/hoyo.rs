@@ -4,6 +4,7 @@ use std::path::{Path};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 use async_compression::tokio::bufread::ZstdDecoder;
+use futures_util::StreamExt;
 use prost::Message;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use crate::download::game::{Game, Hoyo, Sophon};
@@ -133,12 +134,13 @@ impl Sophon for Game {
             if dll.is_ok() {
                 let m = tokio::fs::File::open(p.join(&file).as_path()).await.unwrap();
                 let out = tokio::fs::File::create(p.join("manifest").as_path()).await.unwrap();
-                let mut decoder = ZstdDecoder::new(tokio::io::BufReader::with_capacity(128 * 1024, m));
-                let mut writer = tokio::io::BufWriter::with_capacity(128 * 1024, out);
+                let mut decoder = ZstdDecoder::new(tokio::io::BufReader::new(m));
+                let mut writer = tokio::io::BufWriter::new(out);
                 let rslt = tokio::io::copy(&mut decoder, &mut writer).await;
 
                 if rslt.is_ok() {
                     writer.flush().await.unwrap();
+                    drop(writer);
 
                     let mut f = tokio::fs::OpenOptions::new().read(true).open(p.join("manifest").as_path()).await.unwrap();
                     let mut file_contents = Vec::new();
@@ -156,36 +158,27 @@ impl Sophon for Game {
 
                     let total_bytes: u64 = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.size as u64).sum();
                     let progress_counter = Arc::new(AtomicU64::new(0));
-
-                    let file_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
-                    let mut file_futures = Vec::new();
                     let progress = Arc::new(progress);
 
-                    let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(200));
-
-                    for file in decoded.files.clone() {
-                        let file_semaphore = file_semaphore.clone();
-                        let chunk_semaphore = chunk_semaphore.clone();
-                        let progress_counter = progress_counter.clone();
-                        let progress = progress.clone();
-                        let file_permit = file_semaphore.acquire_owned().await.unwrap();
-
-                        let spc = staging.clone();
+                    let file_tasks = futures::stream::iter(decoded.files.into_iter().map(|file| {
+                        let chunk_base = chunk_base.clone();
                         let chunkpp = chunks.clone();
-                        let cb = chunk_base.clone();
-                        let f = Arc::new(file.clone());
+                        let staging = staging.clone();
                         let client = client.clone();
+                        let progress = progress.clone();
+                        let progress_counter = progress_counter.clone();
+                        async move {
+                            if file.r#type == 64 { return; }
 
-                        let ffut = tokio::task::spawn(async move {
-                            let _permit = file_permit;
+                            let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(165);
 
-                            if f.r#type == 64 { return; }
-
-                            let progress = progress.clone();
-                            let progress_counter = progress_counter.clone();
-                            let output_path = spc.join(&file.name.clone());
-                            let valid = validate_checksum(output_path.as_path(), file.clone().md5.to_ascii_lowercase()).await;
                             let client = client.clone();
+                            let chunkpp = chunkpp.clone();
+                            let spc = staging.clone();
+                            let output_path = spc.join(&file.name.clone());
+                            let progress_counter = progress_counter.clone();
+                            let progress = progress.clone();
+                            let valid = validate_checksum(output_path.as_path(), file.clone().md5.to_ascii_lowercase()).await;
 
                             // File exists in "staging" directory and checksum is valid skip it
                             // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
@@ -198,92 +191,90 @@ impl Sophon for Game {
                                 if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                             }
 
-                            let chunk_semaphore = chunk_semaphore.clone();
-                            let chunks_list = Arc::new(tokio::sync::Mutex::new(Vec::new()));
-                            let mut chunk_futures = Vec::new();
+                            let to_delete = Arc::new(tokio::sync::Mutex::new(HashSet::new()));
+                            let mut output = tokio::fs::File::create(&output_path).await.unwrap();
+                            output.set_len(file.size as u64).await.unwrap();
 
-                            for (index, chunk) in f.chunks.iter().enumerate() {
-                                let chunk_semaphore = chunk_semaphore.clone();
-                                let chunk_permit = chunk_semaphore.acquire_owned().await.unwrap();
+                            let writer_handle = tokio::spawn(async move {
+                                while let Some((offset, buffer)) = rx.recv().await {
+                                    if let Err(e) = output.seek(SeekFrom::Start(offset)).await { println!("Seek failed: {e}"); break; }
+                                    if let Err(e) = output.write_all(&buffer).await { println!("Write failed: {e}"); break; }
+                                    if let Err(e) = output.flush().await { println!("Flush failed: {e}"); break; }
+                                }
+                                drop(output);
+                            });
 
-                                let cc = chunk.clone();
-                                let i = index.clone();
-
+                            let chunk_tasks = futures::stream::iter(file.chunks.into_iter().map(|chunk| {
+                                let cb = chunk_base.clone();
                                 let chunkpp = chunkpp.clone();
-                                let cb = cb.clone();
-                                let chunks_list = chunks_list.clone();
                                 let client = client.clone();
+                                let to_delete = to_delete.clone();
+                                let tx = tx.clone();
+                                async move {
+                                    let cb = cb.clone();
+                                    let cc = chunk.clone();
+                                    let tx = tx.clone();
+                                    let chunkpp = chunkpp.clone();
+                                    let client = client.clone();
+                                    let to_delete = to_delete.clone();
 
-                                let fut = tokio::task::spawn(async move {
-                                    let _chunk_permit = chunk_permit;
                                     let cn = cc.chunk_name.clone();
                                     let chunkp = chunkpp.join(cn.clone());
-                                    let client = client.clone();
 
                                     let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                     let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
 
                                     if dlf.is_ok() && chunkp.exists() {
-                                        let fname = cn + "_" + &*i.to_string() + ".chunk";
-                                        let extc = chunkpp.join(&fname);
-
                                         let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
-                                        let mut out = tokio::fs::File::create(extc.as_path()).await.unwrap();
-                                        let mut decoder = ZstdDecoder::new(tokio::io::BufReader::with_capacity(128 * 1024, c));
-                                        tokio::io::copy(&mut decoder, &mut out).await.unwrap();
-                                        out.flush().await.unwrap();
-                                        drop(out);
+                                        let reader = tokio::io::BufReader::with_capacity(512 * 1024, c);
+                                        let mut decoder = ZstdDecoder::new(reader);
+                                        let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
 
-                                        // Validate decompressed chunks
-                                        let r = validate_checksum(extc.as_path(), cc.chunk_decompressed_md5.to_ascii_lowercase()).await;
-                                        if r {
-                                            let mut list = chunks_list.lock().await;
-                                            list.push((i, extc.clone(), chunkp.clone(),  cc.chunk_on_file_offset as u64));
-                                            drop(list);
+                                        if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
+                                            if tx.send((chunk.chunk_on_file_offset as u64, buffer)).await.is_ok() {
+                                                let mut del = to_delete.lock().await;
+                                                del.insert(chunkp.clone());
+                                            }
+                                            return;
+                                        }
+                                    } else {
+                                        let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
+                                        let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+
+                                        if dlf.is_ok() {
+                                            let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+                                            let reader = tokio::io::BufReader::with_capacity(512 * 1024, c);
+                                            let mut decoder = ZstdDecoder::new(reader);
+                                            let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
+
+                                            if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
+                                                if tx.send((chunk.chunk_on_file_offset as u64, buffer)).await.is_ok() {
+                                                    let mut del = to_delete.lock().await;
+                                                    del.insert(chunkp.clone());
+                                                }
+                                                return;
+                                            }
                                         }
                                     }
-                                });
-                                chunk_futures.push(fut);
-                            }
-                            futures_util::future::join_all(chunk_futures).await;
-
-                            // Chunk assembling
-                            let mut output = tokio::fs::File::create(&output_path).await.unwrap();
-                            output.set_len(file.size as u64).await.unwrap();
-
-                            let mut list = chunks_list.lock().await;
-                            list.sort_by_key(|(i, _, _, _)| *i);
-                            let chunk_entries: Vec<_> = list.drain(..).collect();
-                            drop(list);
-                            let to_delete: HashSet<_> = chunk_entries.iter().map(|(_i, extc, chunkp, _)| (extc.clone(), chunkp.clone())).collect();
-
-                            for (_i, extc, _chunkp, offset) in &chunk_entries {
-                                let mut chunk_file = tokio::fs::File::open(&extc).await.unwrap();
-                                let mut buffer = Vec::new();
-                                chunk_file.read_to_end(&mut buffer).await.unwrap();
-                                output.seek(SeekFrom::Start(*offset)).await.unwrap();
-                                output.write_all(&buffer).await.unwrap();
-                                chunk_file.flush().await.unwrap();
-                                drop(chunk_file);
-                            }
-                            output.flush().await.unwrap();
-                            drop(output);
+                                }
+                            })).buffer_unordered(80).collect::<Vec<()>>();
+                            chunk_tasks.await;
+                            drop(tx);
+                            writer_handle.await.ok();
 
                             let r2 = validate_checksum(output_path.as_path(), file.md5.to_ascii_lowercase()).await;
                             if r2 {
                                 progress_counter.fetch_add(file.size as u64, Ordering::SeqCst);
                                 let processed = progress_counter.load(Ordering::SeqCst);
                                 progress(processed, total_bytes);
-                                for (extc, chunkp) in to_delete {
-                                    for path in [&extc, &chunkp] {
-                                        if let Err(_e) = tokio::fs::remove_file(path).await {}
-                                    }
+                                {
+                                    let to_delete = to_delete.lock().await;
+                                    for chunk in to_delete.iter() { tokio::fs::remove_file(&chunk).await.unwrap(); }
                                 }
-                            }
-                        });
-                        file_futures.push(ffut);
-                    }
-                    futures_util::future::join_all(file_futures).await;
+                            } else { return; }
+                        }
+                    })).buffer_unordered(1).collect::<Vec<()>>();
+                    file_tasks.await;
                     // All files are complete make sure we report done just in case
                     progress(total_bytes, total_bytes);
                     // Move from "staging" to "game_path" and delete "downloading" directory
@@ -298,7 +289,7 @@ impl Sophon for Game {
             }
     }
 
-    async fn patch(manifest: String, version: String, chunk_base: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+    async fn patch(manifest: String, version: String, chunk_base: String, game_path: String, preloaded: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str()).to_path_buf();
@@ -327,8 +318,8 @@ impl Sophon for Game {
                 let chunks = p.join("chunk");
                 let staging = p.join("staging");
 
-                if !chunks.exists() { tokio::fs::create_dir_all(chunks.clone()).await.unwrap(); }
-                if !staging.exists() { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
+                if !chunks.exists() && !preloaded { tokio::fs::create_dir_all(chunks.clone()).await.unwrap(); }
+                if !staging.exists() && !preloaded { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
                 let decoded = tokio::task::spawn_blocking(move || {
                     SophonDiff::decode(&mut std::io::Cursor::new(&file_contents)).unwrap()
                 }).await.unwrap();
@@ -366,15 +357,13 @@ impl Sophon for Game {
                             let diffp = chunks.join(format!("{}.hdiff", chunk.patch_md5));
                             let tmpp = chunks.join(format!("{}.tmp", chunk.patch_md5));
 
-                            let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
-                            let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
-
-                            if dlf.is_ok() && chunkp.exists() {
+                            // User has predownloaded validate each chunk and apply patches
+                            if preloaded {
                                 let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
                                 if r {
                                     let mut list = chunks_list.lock().await;
                                     list.push(diffp.clone());
-                                    list.push(chunkp.clone());
+                                    list.push(tmpp.clone());
                                 }
 
                                 if chunk.original_filename.is_empty() {
@@ -421,7 +410,64 @@ impl Sophon for Game {
                                         if let Err(_) = patch(&of, &diffp, &output_path) {}
                                     });
                                 }
-                            }
+                            } else {
+                                let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
+                                let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+
+                                if dlf.is_ok() && chunkp.exists() {
+                                    let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
+                                    if r {
+                                        let mut list = chunks_list.lock().await;
+                                        list.push(diffp.clone());
+                                        list.push(tmpp.clone());
+                                    }
+
+                                    if chunk.original_filename.is_empty() {
+                                        // Chunk is not a hdiff patchable, copy it over
+                                        let mut output = tokio::fs::File::create(&tmpp).await.unwrap();
+                                        let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+
+                                        chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                        let mut r = chunk_file.take(chunk.patch_length);
+                                        let mut buffer = vec![0u8; chunk.patch_length as usize];
+
+                                        r.read_exact(&mut buffer).await.unwrap();
+                                        output.write_all(&buffer).await.unwrap();
+                                        drop(output);
+
+                                        let mut tmpfile = tokio::fs::File::open(&tmpp).await.unwrap();
+                                        let mut buffer = Vec::new();
+                                        tmpfile.read_to_end(&mut buffer).await.unwrap();
+
+                                        let mut filed = tokio::fs::File::create(&output_path).await.unwrap();
+                                        filed.write_all(&buffer).await.unwrap();
+                                        filed.flush().await.unwrap();
+                                        tmpfile.flush().await.unwrap();
+                                        drop(buffer);
+                                        drop(tmpfile);
+                                        drop(filed);
+                                    } else {
+                                        // Chunk is hdiff patchable, patch it
+                                        let mut output = tokio::fs::File::create(&diffp).await.unwrap();
+                                        let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+
+                                        chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                        let mut r = chunk_file.take(chunk.patch_length);
+                                        let mut buffer = vec![0u8; chunk.patch_length as usize];
+
+                                        r.read_exact(&mut buffer).await.unwrap();
+                                        output.write_all(&buffer).await.unwrap();
+                                        drop(output);
+
+                                        // Apply hdiff
+                                        // PS: User needs hdiffpatch installed on their system otherwise it won't work for now
+                                        let of = mainp.join(&chunk.original_filename);
+                                        tokio::task::spawn_blocking(move || {
+                                            if let Err(_) = patch(&of, &diffp, &output_path) {}
+                                        });
+                                    }
+                                }
+                            } // preload check end
                         }
                     }
                     // end chunks
@@ -499,33 +545,27 @@ impl Sophon for Game {
 
                 let total_bytes: u64 = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.size as u64).sum();
                 let progress_counter = Arc::new(AtomicU64::new(0));
-
-                let file_semaphore = Arc::new(tokio::sync::Semaphore::new(1));
-                let mut file_futures = Vec::new();
                 let progress = Arc::new(progress);
 
-                let chunk_semaphore = Arc::new(tokio::sync::Semaphore::new(200));
-
-                for ff in decoded.files.clone() {
-                    let file_semaphore = file_semaphore.clone();
-                    let chunk_semaphore = chunk_semaphore.clone();
-                    let file_permit = file_semaphore.acquire_owned().await.unwrap();
-
-                    let outputp = mainp.join(&ff.name);
+                let file_tasks = futures::stream::iter(decoded.files.into_iter().map(|ff| {
+                    let chunk_base = chunk_base.clone();
                     let chunkpp = chunks.clone();
-                    let cb = chunk_base.clone();
+                    let mainp = mainp;
                     let client = client.clone();
-
                     let progress = progress.clone();
                     let progress_counter = progress_counter.clone();
-
-                    let ffut = tokio::task::spawn(async move {
-                        let _permit = file_permit;
+                    async move {
+                        let mainp = mainp;
+                        let outputp = mainp.join(&ff.name);
+                        let chunkpp = chunkpp.clone();
+                        let cb = chunk_base.clone();
+                        let client = client.clone();
                         let progress = progress.clone();
                         let progress_counter = progress_counter.clone();
-                        let client = client.clone();
 
                         if ff.r#type == 64 { return; }
+
+                        let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(165);
 
                         if !outputp.exists() {
                             if outputp.exists() {
@@ -535,20 +575,33 @@ impl Sophon for Game {
                                 if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                             }
 
-                            let chunks_list = Arc::new(tokio::sync::Mutex::new(Vec::new()));
-                            let mut chunk_futures = Vec::new();
+                            let to_delete = Arc::new(tokio::sync::Mutex::new(HashSet::new()));
+                            let mut output = tokio::fs::File::create(&outputp).await.unwrap();
+                            output.set_len(ff.size as u64).await.unwrap();
 
-                            for (i, chunk) in ff.chunks.iter().enumerate() {
-                                let chunk_semaphore = chunk_semaphore.clone();
-                                let chunk_perm = chunk_semaphore.acquire_owned().await.unwrap();
-                                let cc = chunk.clone();
-                                let chunkpp = chunkpp.clone();
+                            let writer_handle = tokio::spawn(async move {
+                                while let Some((offset, buffer)) = rx.recv().await {
+                                    if let Err(e) = output.seek(SeekFrom::Start(offset)).await { println!("Seek failed: {e}"); break; }
+                                    if let Err(e) = output.write_all(&buffer).await { println!("Write failed: {e}"); break; }
+                                    if let Err(e) = output.flush().await { println!("Flush failed: {e}"); break; }
+                                }
+                                drop(output);
+                            });
+
+                            let chunk_tasks = futures::stream::iter(ff.chunks.into_iter().map(|chunk| {
                                 let cb = cb.clone();
-                                let chunks_list = chunks_list.clone();
+                                let chunkpp = chunkpp.clone();
                                 let client = client.clone();
+                                let to_delete = to_delete.clone();
+                                let tx = tx.clone();
+                                async move {
+                                    let cb = cb.clone();
+                                    let cc = chunk.clone();
+                                    let tx = tx.clone();
+                                    let chunkpp = chunkpp.clone();
+                                    let client = client.clone();
+                                    let to_delete = to_delete.clone();
 
-                                let fut = tokio::task::spawn(async move {
-                                    let _chunk_permit = chunk_perm;
                                     let cn = cc.chunk_name.clone();
                                     let chunkp = chunkpp.join(cn.clone());
 
@@ -556,61 +609,53 @@ impl Sophon for Game {
                                     let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
 
                                     if dlf.is_ok() && chunkp.exists() {
-                                        let fname = cn + ".chunk";
-                                        let extc = chunkpp.join(&fname);
+                                        let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+                                        let reader = tokio::io::BufReader::with_capacity(512 * 1024, c);
+                                        let mut decoder = ZstdDecoder::new(reader);
+                                        let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
 
-                                        let c = tokio::fs::OpenOptions::new().read(true).open(chunkp.as_path()).await.unwrap();
-                                        let mut out = tokio::fs::File::create(extc.as_path()).await.unwrap();
-                                        let mut decoder = ZstdDecoder::new(tokio::io::BufReader::with_capacity(128 * 1024, c));
-                                        tokio::io::copy(&mut decoder, &mut out).await.unwrap();
-                                        out.flush().await.unwrap();
-                                        drop(out);
+                                        if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
+                                            if tx.send((chunk.chunk_on_file_offset as u64, buffer)).await.is_ok() {
+                                                let mut del = to_delete.lock().await;
+                                                del.insert(chunkp.clone());
+                                            }
+                                            return;
+                                        }
+                                    } else {
+                                        let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
+                                        let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
 
-                                        // Validate decompressed chunks
-                                        let r = if is_fast { extc.metadata().unwrap().len() == cc.chunk_decompressed_size as u64 } else { validate_checksum(extc.as_path(), cc.chunk_decompressed_md5.to_ascii_lowercase()).await };
-                                        if r {
-                                            let mut list = chunks_list.lock().await;
-                                            list.push((i, extc.clone(), chunkp.clone(), cc.chunk_on_file_offset as u64));
+                                        if dlf.is_ok() {
+                                            let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+                                            let reader = tokio::io::BufReader::with_capacity(512 * 1024, c);
+                                            let mut decoder = ZstdDecoder::new(reader);
+                                            let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
+
+                                            if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
+                                                if tx.send((chunk.chunk_on_file_offset as u64, buffer)).await.is_ok() {
+                                                    let mut del = to_delete.lock().await;
+                                                    del.insert(chunkp.clone());
+                                                }
+                                                return;
+                                            }
                                         }
                                     }
-                                });
-                                chunk_futures.push(fut);
-                            }
-                            futures_util::future::join_all(chunk_futures).await;
-
-                            // Chunk assembling
-                            let mut output = tokio::fs::OpenOptions::new().write(true).create(true).open(&outputp).await.unwrap();
-                            output.set_len(ff.size as u64).await.unwrap();
-
-                            let mut list = chunks_list.lock().await;
-                            list.sort_by_key(|(i, _, _, _)| *i);
-                            let chunk_entries: Vec<_> = list.drain(..).collect();
-                            drop(list);
-                            let to_delete: HashSet<_> = chunk_entries.iter().map(|(_i, extc, chunkp, _)| (extc.clone(), chunkp.clone())).collect();
-
-                            for (_i, extc, _chunkp, offset) in &chunk_entries {
-                                let mut chunk_file = tokio::fs::File::open(extc).await.unwrap();
-                                let mut buffer = Vec::new();
-                                chunk_file.read_to_end(&mut buffer).await.unwrap();
-                                output.seek(SeekFrom::Start(*offset)).await.unwrap();
-                                output.write_all(&buffer).await.unwrap();
-                                chunk_file.flush().await.unwrap();
-                                drop(chunk_file);
-                            }
-                            output.flush().await.unwrap();
-                            drop(output);
+                                }
+                            })).buffer_unordered(80).collect::<Vec<()>>();
+                            chunk_tasks.await;
+                            drop(tx);
+                            writer_handle.await.ok();
 
                             let r2 = if is_fast { outputp.metadata().unwrap().len() as i64 == ff.size } else { validate_checksum(outputp.as_path(), ff.md5.to_ascii_lowercase()).await };
                             if r2 {
                                 progress_counter.fetch_add(ff.size as u64, Ordering::SeqCst);
                                 let processed = progress_counter.load(Ordering::SeqCst);
                                 progress(processed, total_bytes);
-                                for (extc, chunkp) in to_delete {
-                                    for path in [&extc, &chunkp] {
-                                        if let Err(_e) = tokio::fs::remove_file(path).await {}
-                                    }
+                                {
+                                    let to_delete = to_delete.lock().await;
+                                    for chunk in to_delete.iter() { tokio::fs::remove_file(&chunk).await.unwrap(); }
                                 }
-                            }
+                            } else { return; }
                         } else {
                             let valid = if is_fast { outputp.metadata().unwrap().len() == ff.size as u64 } else { validate_checksum(&outputp, ff.md5.to_ascii_lowercase()).await };
                             if !valid {
@@ -621,83 +666,87 @@ impl Sophon for Game {
                                     if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                                 }
 
-                                let chunks_list = Arc::new(tokio::sync::Mutex::new(Vec::new()));
-                                let mut chunk_futures = Vec::new();
+                                let to_delete = Arc::new(tokio::sync::Mutex::new(HashSet::new()));
+                                let mut output = tokio::fs::File::create(&outputp).await.unwrap();
+                                output.set_len(ff.size as u64).await.unwrap();
 
-                                for (i, chunk) in ff.chunks.iter().enumerate() {
-                                    let chunk_semaphore = chunk_semaphore.clone();
-                                    let chunk_perm = chunk_semaphore.acquire_owned().await.unwrap();
-                                    let cc = chunk.clone();
+                                let writer_handle = tokio::spawn(async move {
+                                    while let Some((offset, buffer)) = rx.recv().await {
+                                        if let Err(e) = output.seek(SeekFrom::Start(offset)).await { println!("Seek failed: {e}"); break; }
+                                        if let Err(e) = output.write_all(&buffer).await { println!("Write failed: {e}"); break; }
+                                        if let Err(e) = output.flush().await { println!("Flush failed: {e}"); break; }
+                                    }
+                                    drop(output);
+                                });
+
+                                let chunk_tasks = futures::stream::iter(ff.chunks.into_iter().map(|chunk| {
+                                    let cb = chunk_base.clone();
                                     let chunkpp = chunkpp.clone();
-                                    let cb = cb.clone();
-                                    let chunks_list = chunks_list.clone();
                                     let client = client.clone();
+                                    let to_delete = to_delete.clone();
+                                    let tx = tx.clone();
+                                    async move {
+                                        let cb = cb.clone();
+                                        let cc = chunk.clone();
+                                        let tx = tx.clone();
+                                        let chunkpp = chunkpp.clone();
+                                        let client = client.clone();
+                                        let to_delete = to_delete.clone();
 
-                                    let fut = tokio::task::spawn(async move {
-                                        let _chunk_permit = chunk_perm;
                                         let cn = cc.chunk_name.clone();
                                         let chunkp = chunkpp.join(cn.clone());
-                                        let client = client.clone();
 
                                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                         let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
 
-                                        if dlf.is_ok() {
-                                            let fname = cn + ".chunk";
-                                            let extc = chunkpp.join(&fname);
+                                        if dlf.is_ok() && chunkp.exists() {
+                                            let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+                                            let reader = tokio::io::BufReader::with_capacity(512 * 1024, c);
+                                            let mut decoder = ZstdDecoder::new(reader);
+                                            let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
 
-                                            let c = tokio::fs::OpenOptions::new().read(true).open(chunkp.as_path()).await.unwrap();
-                                            let mut out = tokio::fs::File::create(extc.as_path()).await.unwrap();
-                                            let mut decoder = ZstdDecoder::new(tokio::io::BufReader::with_capacity(128 * 1024, c));
-                                            tokio::io::copy(&mut decoder, &mut out).await.unwrap();
-                                            out.flush().await.unwrap();
-                                            drop(out);
+                                            if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
+                                                if tx.send((chunk.chunk_on_file_offset as u64, buffer)).await.is_ok() {
+                                                    let mut del = to_delete.lock().await;
+                                                    del.insert(chunkp.clone());
+                                                }
+                                                return;
+                                            }
+                                        } else {
+                                            let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
+                                            let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
 
-                                            // Validate decompressed chunks
-                                            let r = if is_fast { extc.metadata().unwrap().len() as i64 == cc.chunk_decompressed_size } else { validate_checksum(extc.as_path(), cc.chunk_decompressed_md5.to_ascii_lowercase()).await };
-                                            if r {
-                                                let mut list = chunks_list.lock().await;
-                                                list.push((i, extc.clone(), chunkp.clone(), cc.chunk_on_file_offset as u64));
+                                            if dlf.is_ok() {
+                                                let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+                                                let reader = tokio::io::BufReader::with_capacity(512 * 1024, c);
+                                                let mut decoder = ZstdDecoder::new(reader);
+                                                let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
+
+                                                if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
+                                                    if tx.send((chunk.chunk_on_file_offset as u64, buffer)).await.is_ok() {
+                                                        let mut del = to_delete.lock().await;
+                                                        del.insert(chunkp.clone());
+                                                    }
+                                                    return;
+                                                }
                                             }
                                         }
-                                    });
-                                    chunk_futures.push(fut);
-                                }
-                                futures_util::future::join_all(chunk_futures).await;
+                                    }
+                                })).buffer_unordered(80).collect::<Vec<()>>();
+                                chunk_tasks.await;
+                                drop(tx);
+                                writer_handle.await.ok();
 
-                                // Chunk assembling
-                                let mut output = tokio::fs::OpenOptions::new().write(true).create(true).open(&outputp).await.unwrap();
-                                output.set_len(ff.size as u64).await.unwrap();
-
-                                let mut list = chunks_list.lock().await;
-                                list.sort_by_key(|(i, _, _, _)| *i);
-                                let chunk_entries: Vec<_> = list.drain(..).collect();
-                                drop(list);
-                                let to_delete: HashSet<_> = chunk_entries.iter().map(|(_i, extc, chunkp, _)| (extc.clone(), chunkp.clone())).collect();
-
-                                for (_i, extc, _chunkp, offset) in chunk_entries {
-                                    let mut chunk_file = tokio::fs::File::open(extc).await.unwrap();
-                                    let mut buffer = Vec::new();
-                                    chunk_file.read_to_end(&mut buffer).await.unwrap();
-                                    output.seek(SeekFrom::Start(offset)).await.unwrap();
-                                    output.write_all(&buffer).await.unwrap();
-                                    chunk_file.flush().await.unwrap();
-                                    drop(chunk_file);
-                                }
-                                output.flush().await.unwrap();
-                                drop(output);
-
-                                let r2 = if is_fast { outputp.metadata().unwrap().len() == ff.size as u64 } else { validate_checksum(outputp.as_path(), ff.md5.to_ascii_lowercase()).await };
+                                let r2 = if is_fast { outputp.metadata().unwrap().len() as i64 == ff.size } else { validate_checksum(outputp.as_path(), ff.md5.to_ascii_lowercase()).await };
                                 if r2 {
                                     progress_counter.fetch_add(ff.size as u64, Ordering::SeqCst);
                                     let processed = progress_counter.load(Ordering::SeqCst);
                                     progress(processed, total_bytes);
-                                    for (extc, chunkp) in to_delete {
-                                        for path in [&extc, &chunkp] {
-                                            if let Err(_e) = tokio::fs::remove_file(path).await {}
-                                        }
+                                    {
+                                        let to_delete = to_delete.lock().await;
+                                        for chunk in to_delete.iter() { tokio::fs::remove_file(&chunk).await.unwrap(); }
                                     }
-                                }
+                                } else { return; }
                             } else {
                                 progress_counter.fetch_add(ff.size as u64, Ordering::SeqCst);
                                 let processed = progress_counter.load(Ordering::SeqCst);
@@ -705,16 +754,110 @@ impl Sophon for Game {
                                 return;
                             }
                         }
-                    });
-                    file_futures.push(ffut);
-                }
-                futures_util::future::join_all(file_futures).await;
+                    }
+                })).buffer_unordered(1).collect::<Vec<()>>();
+                file_tasks.await;
+                // All files are complete make sure we report done just in case
+                progress(total_bytes, total_bytes);
+                if p.exists() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
+                true
+            } else {
+                false
+            }
+        } else { false }
+    }
+
+    async fn preload(manifest: String, version: String, chunk_base: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+        if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
+
+        let mainp = Path::new(game_path.as_str()).to_path_buf();
+        let p = mainp.join("patching");
+        let client = Arc::new(AsyncDownloader::setup_client().await);
+
+        let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
+        let file = dl.get_filename().await.to_string();
+        let dll = dl.download(p.clone().join(&file), |_, _| {}).await;
+
+        if dll.is_ok() {
+            let m = tokio::fs::File::open(p.join(&file).as_path()).await.unwrap();
+            let out = tokio::fs::File::create(p.join("manifest").as_path()).await.unwrap();
+            let mut decoder = ZstdDecoder::new(tokio::io::BufReader::new(m));
+            let mut writer = tokio::io::BufWriter::new(out);
+            let rslt = tokio::io::copy(&mut decoder, &mut writer).await;
+
+            if rslt.is_ok() {
+                writer.flush().await.unwrap();
+
+                let mut f = tokio::fs::File::open(p.join("manifest").as_path()).await.unwrap();
+                let mut file_contents = Vec::new();
+                f.read_to_end(&mut file_contents).await.unwrap();
+
+                if p.join(&file).exists() { tokio::fs::remove_file(p.join(&file).as_path()).await.unwrap(); }
+                if !p.join(".preload").exists() { tokio::fs::File::create(p.join(".preload")).await.unwrap(); }
+                let chunks = p.join("chunk");
+                let staging = p.join("staging");
+
+                if !chunks.exists() { tokio::fs::create_dir_all(chunks.clone()).await.unwrap(); }
+                if !staging.exists() { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
+                let decoded = tokio::task::spawn_blocking(move || {
+                    SophonDiff::decode(&mut std::io::Cursor::new(&file_contents)).unwrap()
+                }).await.unwrap();
+
+                let total_bytes: u64 = decoded.files.iter().map(|f| f.size).sum();
+                let progress_counter = Arc::new(AtomicU64::new(0));
+                let progress = Arc::new(progress);
+
+                let file_tasks = futures::stream::iter(decoded.files.into_iter().map(|file| {
+                    let client = client.clone();
+                    let chunk_base = chunk_base.clone();
+                    let version = version.clone();
+                    let chunkp = chunks.clone();
+                    let file = file.clone();
+                    let progress = progress.clone();
+                    let progress_counter = progress_counter.clone();
+                    async move {
+                        let file = file.clone();
+                        let version = version.clone();
+                        let chunkp = chunkp.clone();
+                        let chunk_base = chunk_base.clone();
+                        let filtered: Vec<(String, PatchChunk)> = file.chunks.clone().into_iter().filter(|(v, _chunk)| version.as_str() == v.as_str()).collect();
+                        // File has patches to apply
+                        if !filtered.is_empty() {
+                            for (_v, chunk) in filtered.into_iter() {
+                                let pn = chunk.patch_name;
+                                let chunkp = chunkp.join(pn.clone());
+
+                                if chunkp.exists() {
+                                    progress_counter.fetch_add(file.size, Ordering::SeqCst);
+                                    let processed = progress_counter.load(Ordering::SeqCst);
+                                    progress(processed, total_bytes);
+                                    return;
+                                }
+
+                                let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
+                                let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+
+                                if dlf.is_ok() && chunkp.exists() {
+                                    let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
+                                    if r {
+                                        progress_counter.fetch_add(file.size, Ordering::SeqCst);
+                                        let processed = progress_counter.load(Ordering::SeqCst);
+                                        progress(processed, total_bytes);
+                                    }
+                                }
+                            }
+                        } // end
+                    }
+                })).buffer_unordered(30).collect::<Vec<()>>();
+                file_tasks.await;
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
                 true
             } else {
                 false
             }
-        } else { false }
+        } else {
+            false
+        }
     }
 }

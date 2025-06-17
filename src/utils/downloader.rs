@@ -63,8 +63,8 @@ pub struct AsyncDownloader {
 
 impl AsyncDownloader {
     pub async fn setup_client() -> ClientWithMiddleware {
-        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(30);
-        let c = reqwest::Client::builder().pool_max_idle_per_host(30).build().unwrap();
+        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(20);
+        let c = reqwest::Client::builder().pool_max_idle_per_host(40).build().unwrap();
         let client = reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build();
         client
     }
@@ -220,7 +220,7 @@ impl AsyncDownloader {
                 }
 
                 progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
-
+                drop(file);
             Ok(())
             }
             Err(err) => Err(DownloadingError::OutputFileError(path, err.to_string()))

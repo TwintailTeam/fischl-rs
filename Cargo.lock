@@ -326,6 +326,7 @@ dependencies = [
  "async-compression",
  "chksum-md5",
  "compress-tools",
+ "futures",
  "futures-util",
  "prost",
  "prost-build",
