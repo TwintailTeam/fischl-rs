@@ -215,7 +215,7 @@ pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mu
 }
 
 pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, patch: T, output: T) -> io::Result<()> {
-    let output = Command::new(bin_path.as_ref())
+    let output = Command::new(bin_path)
         .arg("-f").arg(file.into().as_os_str()).arg(patch.into().as_os_str()).arg(output.into().as_os_str()).output()?;
 
     if String::from_utf8_lossy(output.stdout.as_slice()).contains("patch ok!") { Ok(()) } else {
