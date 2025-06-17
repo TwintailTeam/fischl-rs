@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 use crate::utils::codeberg_structs::CodebergRelease;
 use crate::utils::github_structs::GithubRelease;
 
+#[cfg(target_os = "linux")]
+use std::os::unix::fs::PermissionsExt;
+
 pub(crate) mod github_structs;
 pub(crate) mod codeberg_structs;
 pub(crate) mod proto;
@@ -215,8 +218,12 @@ pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mu
 }
 
 pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, patch: T, output: T) -> io::Result<()> {
-    let output = Command::new(bin_path)
-        .arg("-f").arg(file.into().as_os_str()).arg(patch.into().as_os_str()).arg(output.into().as_os_str()).output()?;
+    #[cfg(target_os = "linux")]
+    {
+        let bp = Path::new(&bin_path);
+        fs::set_permissions(bp, fs::Permissions::from_mode(0o777))?;
+    }
+    let output = Command::new(bin_path).arg("-f").arg(file.into().as_os_str()).arg(patch.into().as_os_str()).arg(output.into().as_os_str()).output()?;
 
     if String::from_utf8_lossy(output.stdout.as_slice()).contains("patch ok!") { Ok(()) } else {
         let err = String::from_utf8_lossy(&output.stderr);
