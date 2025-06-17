@@ -329,7 +329,7 @@ impl Sophon for Game {
 
                 for file in decoded.files {
                     let file = Arc::new(file.clone());
-
+                    let hpatchz_path = hpatchz_path.clone();
                     let output_path = staging.join(&file.name.clone());
                     let valid = validate_checksum(output_path.as_path(), file.clone().md5.to_ascii_lowercase()).await;
 
@@ -351,6 +351,7 @@ impl Sophon for Game {
                     if !filtered.is_empty() {
                         for (_v, chunk) in filtered.into_iter() {
                             let output_path = output_path.clone();
+                            let hpatchz_path = hpatchz_path.clone();
 
                             let pn = chunk.patch_name;
                             let chunkp = chunks.join(pn.clone());
