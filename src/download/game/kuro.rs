@@ -83,7 +83,7 @@ impl Kuro for Game {
                         }
                     }
                 }
-            })).buffer_unordered(40).collect::<Vec<()>>();
+            })).buffer_unordered(20).collect::<Vec<()>>();
             file_tasks.await;
             // All files are complete make sure we report done just in case
             progress(total_bytes, total_bytes);
@@ -177,7 +177,7 @@ impl Kuro for Game {
                             }
                         }
                     }
-                })).buffer_unordered(40).collect::<Vec<()>>();
+                })).buffer_unordered(20).collect::<Vec<()>>();
                 file_tasks.await;
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
@@ -311,7 +311,7 @@ impl Kuro for Game {
                         }
                     }
                 }
-            })).buffer_unordered(40).collect::<Vec<()>>();
+            })).buffer_unordered(20).collect::<Vec<()>>();
             file_tasks.await;
             // All files are complete make sure we report done just in case
             progress(total_bytes, total_bytes);
