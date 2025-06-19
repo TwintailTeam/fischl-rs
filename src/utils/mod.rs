@@ -197,7 +197,6 @@ pub fn prettify_bytes(bytes: u64) -> String {
 
 pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mut callback: F) -> bool where F: FnMut(bool) -> bool {
     let mut sys = sysinfo::System::new_all();
-
     for _ in 0..retries {
         sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
         let pns = process_name.split(".").collect::<Vec<&str>>();
@@ -206,24 +205,16 @@ pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mu
             let apn = process.name().to_str().unwrap();
             let apns = apn.split(".").collect::<Vec<&str>>();
             let apnn = apns.first().unwrap();
-
             apnn == pn
         });
-        if callback(found) {
-            return found;
-        }
+        if callback(found) { return found; }
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
     }
     false
 }
 
 pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, patch: T, output: T) -> io::Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        let bp = Path::new(&bin_path);
-        fs::set_permissions(bp, fs::Permissions::from_mode(0o777))?;
-    }
-    let output = Command::new(bin_path).arg("-f").arg(file.into().as_os_str()).arg(patch.into().as_os_str()).arg(output.into().as_os_str()).output()?;
+    let output = Command::new("hpatchz").arg("-f").arg(file.into().as_os_str()).arg(patch.into().as_os_str()).arg(output.into().as_os_str()).output()?;
 
     if String::from_utf8_lossy(output.stdout.as_slice()).contains("patch ok!") { Ok(()) } else {
         let err = String::from_utf8_lossy(&output.stderr);
