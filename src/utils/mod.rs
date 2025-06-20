@@ -74,24 +74,18 @@ pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs:
     let src = Path::new(&archive_path);
     let dest = Path::new(&extract_dest);
 
-    if !src.exists() {
-        false
-    } else if !dest.exists() {
+    if !src.exists() { false } else if !dest.exists() {
         fs::create_dir_all(&dest).unwrap();
         let mut file = fs::File::open(&src).unwrap();
         compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
         fs::remove_file(&src).unwrap();
-        if move_subdirs {
-            copy_dir_all(&dest).unwrap();
-        }
+        if move_subdirs { copy_dir_all(&dest).unwrap(); }
         true
     } else {
         let mut file = fs::File::open(&src).unwrap();
         compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
         fs::remove_file(&src).unwrap();
-        if move_subdirs {
-            copy_dir_all(&dest).unwrap();
-        }
+        if move_subdirs { copy_dir_all(&dest).unwrap(); }
         true
     }
 }
@@ -113,11 +107,7 @@ pub fn assemble_multipart_archive(parts: Vec<String>, dest: String) -> bool {
         out.write_all(&buf).unwrap();
         fs::remove_file(&partp).unwrap();
     }
-
-    if out.flush().is_err() {
-        return false;
-    }
-
+    if out.flush().is_err() { return false; }
     true
 }
 
@@ -214,11 +204,22 @@ pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mu
 }
 
 pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, patch: T, output: T) -> io::Result<()> {
-    let output = Command::new("hpatchz").arg("-f").arg(file.into().as_os_str()).arg(patch.into().as_os_str()).arg(output.into().as_os_str()).output()?;
+    let output = Command::new(bin_path.as_str()).arg("-f").arg(file.into().as_os_str()).arg(patch.into().as_os_str()).arg(output.into().as_os_str()).output()?;
 
     if String::from_utf8_lossy(output.stdout.as_slice()).contains("patch ok!") { Ok(()) } else {
         let err = String::from_utf8_lossy(&output.stderr);
         Err(Error::new(ErrorKind::Other, format!("Failed to apply hdiff patch: {err}")))
+    }
+}
+
+pub fn patch_aki(file: String) {
+    let p = Path::new(&file);
+    if p.exists() {
+        let fp = fs::read_to_string(&p).unwrap();
+        let patched = fp.lines().map(|line| {
+                if line.starts_with("KR_ChannelID=") { "KR_ChannelID=205" } else { line }
+            }).collect::<Vec<_>>().join("\n");
+        fs::write(p, patched).unwrap();
     }
 }
 
