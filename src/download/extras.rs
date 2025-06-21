@@ -89,7 +89,7 @@ impl Extras {
         }
     }
 
-    pub fn download_xxmi_packages(gimi_repo: String, srmi_repo: String, zzmi_repo: String, wwmi_repo: String, dest: String, use_fork: bool) -> bool {
+    pub fn download_xxmi_packages(gimi_repo: String, srmi_repo: String, zzmi_repo: String, wwmi_repo: String, himi_repo: String, dest: String, use_fork: bool) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
             if use_fork {
@@ -97,17 +97,20 @@ impl Extras {
                 let srmi = get_tukanrepo_release(srmi_repo.clone());
                 let zzmi = get_tukanrepo_release(zzmi_repo.clone());
                 let wwmi = get_tukanrepo_release(wwmi_repo.clone());
+                let himi = get_tukanrepo_release(himi_repo.clone());
 
-                if gimi.is_some() && srmi.is_some() && zzmi.is_some() && wwmi.is_some() {
+                if gimi.is_some() && srmi.is_some() && zzmi.is_some() && wwmi.is_some() && himi.is_some() {
                     let gi = gimi.unwrap();
                     let sr = srmi.unwrap();
                     let zz = zzmi.unwrap();
                     let ww = wwmi.unwrap();
+                    let hi = himi.unwrap();
 
                     let dlg = gi.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
                     let dlsr = sr.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
                     let dlzz = zz.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
                     let dlww = ww.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
+                    let dlhi = hi.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
 
                     let mut downloader = Downloader::new(dlg).unwrap();
                     let dl = downloader.download(d.join("gimi.zip").to_path_buf(), move |_, _| {});
@@ -121,7 +124,10 @@ impl Extras {
                     let mut downloader3 = Downloader::new(dlww).unwrap();
                     let dl3 = downloader3.download(d.join("wwmi.zip").to_path_buf(), move |_, _| {});
 
-                    if dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() {
+                    let mut downloader4 = Downloader::new(dlhi).unwrap();
+                    let dl4 = downloader4.download(d.join("himi.zip").to_path_buf(), move |_, _| {});
+
+                    if dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() && dl4.is_ok() {
                         true
                     } else {
                         false
@@ -134,17 +140,20 @@ impl Extras {
                 let srmi = get_github_release(srmi_repo.clone());
                 let zzmi = get_github_release(zzmi_repo.clone());
                 let wwmi = get_github_release(wwmi_repo.clone());
+                let himi = get_github_release(himi_repo.clone());
 
-                if gimi.is_some() && srmi.is_some() && zzmi.is_some() && wwmi.is_some() {
+                if gimi.is_some() && srmi.is_some() && zzmi.is_some() && wwmi.is_some() && himi.is_some() {
                     let gi = gimi.unwrap();
                     let sr = srmi.unwrap();
                     let zz = zzmi.unwrap();
                     let ww = wwmi.unwrap();
+                    let hi = himi.unwrap();
 
                     let dlg = gi.assets.get(0).unwrap().clone().browser_download_url;
                     let dlsr = sr.assets.get(0).unwrap().clone().browser_download_url;
                     let dlzz = zz.assets.get(0).unwrap().clone().browser_download_url;
                     let dlww = ww.assets.get(0).unwrap().clone().browser_download_url;
+                    let dlhi = hi.assets.get(0).unwrap().clone().browser_download_url;
 
                     let mut downloader = Downloader::new(dlg).unwrap();
                     let dl = downloader.download(d.join("gimi.zip").to_path_buf(), move |_, _| {});
@@ -158,7 +167,10 @@ impl Extras {
                     let mut downloader3 = Downloader::new(dlww).unwrap();
                     let dl3 = downloader3.download(d.join("wwmi.zip").to_path_buf(), move |_, _| {});
 
-                    if dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() {
+                    let mut downloader4 = Downloader::new(dlhi).unwrap();
+                    let dl4 = downloader4.download(d.join("himi.zip").to_path_buf(), move |_, _| {});
+
+                    if dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() && dl4.is_ok() {
                         true
                     } else {
                         false
