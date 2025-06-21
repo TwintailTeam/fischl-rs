@@ -404,8 +404,6 @@ impl Sophon for Game {
                                     output.write_all(&buffer).await.unwrap();
                                     drop(output);
 
-                                    // Apply hdiff
-                                    // PS: User needs hdiffpatch installed on their system otherwise it won't work for now
                                     let of = mainp.join(&chunk.original_filename);
                                     tokio::task::spawn_blocking(move || {
                                         if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {}
@@ -460,8 +458,6 @@ impl Sophon for Game {
                                         output.write_all(&buffer).await.unwrap();
                                         drop(output);
 
-                                        // Apply hdiff
-                                        // PS: User needs hdiffpatch installed on their system otherwise it won't work for now
                                         let of = mainp.join(&chunk.original_filename);
                                         tokio::task::spawn_blocking(move || {
                                             if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {}
@@ -849,7 +845,7 @@ impl Sophon for Game {
                             }
                         } // end
                     }
-                })).buffer_unordered(30).collect::<Vec<()>>();
+                })).buffer_unordered(10).collect::<Vec<()>>();
                 file_tasks.await;
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
