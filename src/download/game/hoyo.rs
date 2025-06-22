@@ -170,7 +170,7 @@ impl Sophon for Game {
                         async move {
                             if file.r#type == 64 { return; }
 
-                            let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(165);
+                            let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(80);
 
                             let client = client.clone();
                             let chunkpp = chunkpp.clone();
@@ -231,11 +231,10 @@ impl Sophon for Game {
                                         let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
 
                                         if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
-                                            if tx.send((chunk.chunk_on_file_offset as u64, buffer)).await.is_ok() {
-                                                let mut del = to_delete.lock().await;
-                                                del.insert(chunkp.clone());
-                                            }
-                                            return;
+                                            if let Err(e) = tx.send((chunk.chunk_on_file_offset as u64, buffer)).await { println!("[ERROR] Failed to send chunk data: {e}"); }
+                                            let mut del = to_delete.lock().await;
+                                            del.insert(chunkp.clone());
+                                            drop(del);
                                         }
                                     } else {
                                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
@@ -248,16 +247,15 @@ impl Sophon for Game {
                                             let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
 
                                             if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
-                                                if tx.send((chunk.chunk_on_file_offset as u64, buffer)).await.is_ok() {
-                                                    let mut del = to_delete.lock().await;
-                                                    del.insert(chunkp.clone());
-                                                }
-                                                return;
+                                                if let Err(e) = tx.send((chunk.chunk_on_file_offset as u64, buffer)).await { println!("[ERROR] Failed to send chunk data: {e}"); }
+                                                let mut del = to_delete.lock().await;
+                                                del.insert(chunkp.clone());
+                                                drop(del);
                                             }
                                         }
                                     }
                                 }
-                            })).buffer_unordered(80).collect::<Vec<()>>();
+                            })).buffer_unordered(80).collect::<Vec<_>>();
                             chunk_tasks.await;
                             drop(tx);
                             writer_handle.await.ok();
@@ -267,13 +265,12 @@ impl Sophon for Game {
                                 progress_counter.fetch_add(file.size as u64, Ordering::SeqCst);
                                 let processed = progress_counter.load(Ordering::SeqCst);
                                 progress(processed, total_bytes);
-                                {
-                                    let to_delete = to_delete.lock().await;
-                                    for chunk in to_delete.iter() { tokio::fs::remove_file(&chunk).await.unwrap(); }
-                                }
+                                let to_delete = to_delete.lock().await;
+                                for chunk in to_delete.iter() { tokio::fs::remove_file(&chunk).await.unwrap(); }
+                                drop(to_delete);
                             } else { return; }
                         }
-                    })).buffer_unordered(1).collect::<Vec<()>>();
+                    })).buffer_unordered(1).collect::<Vec<_>>();
                     file_tasks.await;
                     // All files are complete make sure we report done just in case
                     progress(total_bytes, total_bytes);
