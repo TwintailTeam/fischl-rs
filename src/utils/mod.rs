@@ -1,5 +1,5 @@
 use std::{fs, io};
-use std::io::{Error, ErrorKind, Read, Write};
+use std::io::{Error, Read, Write};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::Command;
@@ -8,9 +8,6 @@ use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
 use crate::utils::codeberg_structs::CodebergRelease;
 use crate::utils::github_structs::GithubRelease;
-
-#[cfg(target_os = "linux")]
-use std::os::unix::fs::PermissionsExt;
 
 pub(crate) mod github_structs;
 pub(crate) mod codeberg_structs;
@@ -75,17 +72,17 @@ pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs:
     let dest = Path::new(&extract_dest);
 
     if !src.exists() { false } else if !dest.exists() {
-        fs::create_dir_all(&dest).unwrap();
-        let mut file = fs::File::open(&src).unwrap();
-        compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
-        fs::remove_file(&src).unwrap();
-        if move_subdirs { copy_dir_all(&dest).unwrap(); }
+        fs::create_dir_all(dest).unwrap();
+        let mut file = fs::File::open(src).unwrap();
+        compress_tools::uncompress_archive(&mut file, dest, Ownership::Preserve).unwrap();
+        fs::remove_file(src).unwrap();
+        if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
     } else {
-        let mut file = fs::File::open(&src).unwrap();
-        compress_tools::uncompress_archive(&mut file, &dest, Ownership::Preserve).unwrap();
-        fs::remove_file(&src).unwrap();
-        if move_subdirs { copy_dir_all(&dest).unwrap(); }
+        let mut file = fs::File::open(src).unwrap();
+        compress_tools::uncompress_archive(&mut file, dest, Ownership::Preserve).unwrap();
+        fs::remove_file(src).unwrap();
+        if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
     }
 }
@@ -208,14 +205,14 @@ pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, pa
 
     if String::from_utf8_lossy(output.stdout.as_slice()).contains("patch ok!") { Ok(()) } else {
         let err = String::from_utf8_lossy(&output.stderr);
-        Err(Error::new(ErrorKind::Other, format!("Failed to apply hdiff patch: {err}")))
+        Err(Error::other(format!("Failed to apply hdiff patch: {err}")))
     }
 }
 
 pub fn patch_aki(file: String) {
     let p = Path::new(&file);
     if p.exists() {
-        let fp = fs::read_to_string(&p).unwrap();
+        let fp = fs::read_to_string(p).unwrap();
         let patched = fp.lines().map(|line| {
                 if line.starts_with("KR_ChannelID=") { "KR_ChannelID=205" } else { line }
             }).collect::<Vec<_>>().join("\n");

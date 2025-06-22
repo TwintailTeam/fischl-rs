@@ -228,7 +228,7 @@ impl Kuro for Game {
                 let progress = progress.clone();
                 let progress_counter = progress_counter.clone();
                 async move {
-                    let mainp = mainp.join(&ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
+                    let mainp = mainp.join(ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
 
                     let cb = chunk_base.clone();
                     let output_path = mainp.clone();
@@ -275,7 +275,6 @@ impl Kuro for Game {
                             progress_counter.fetch_add(ff.size, Ordering::SeqCst);
                             let processed = progress_counter.load(Ordering::SeqCst);
                             progress(processed, total_bytes);
-                            return;
                         }
                     } else {
                         if output_path.exists() {

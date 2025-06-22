@@ -7,7 +7,7 @@ fn main() -> Result<(), ()> {
         let mut config = prost_build::Config::new();
 
         config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]");
-        config.disable_comments(&["proto/"]);
+        config.disable_comments(["proto/"]);
         config.out_dir("src/utils");
         config.default_package_filename("proto");
 

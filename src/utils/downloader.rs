@@ -65,8 +65,7 @@ impl AsyncDownloader {
     pub async fn setup_client() -> ClientWithMiddleware {
         let retry_policy = ExponentialBackoff::builder().build_with_max_retries(20);
         let c = reqwest::Client::builder().pool_max_idle_per_host(40).build().unwrap();
-        let client = reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build();
-        client
+        reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build()
     }
 
     pub async fn new<T: AsRef<str>>(client: Arc<ClientWithMiddleware>, uri: T) -> Result<Self, reqwest::Error> {

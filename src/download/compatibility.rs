@@ -11,11 +11,7 @@ impl Compatibility {
             let mut downloader = Downloader::new(url).unwrap();
             let dl = downloader.download(d.to_path_buf().join("runner.zip"), |_, _| {});
 
-            if dl.is_ok() {
-                true
-            } else {
-                false
-            }
+            dl.is_ok()
         } else {
             fs::create_dir_all(d).unwrap();
             false
@@ -28,11 +24,7 @@ impl Compatibility {
             let mut downloader = Downloader::new(url).unwrap();
             let dl = downloader.download(d.to_path_buf().join("dxvk.zip"), |_, _| {});
 
-            if dl.is_ok() {
-                true
-            } else {
-                false
-            }
+            dl.is_ok()
         } else {
             fs::create_dir_all(d).unwrap();
             false

@@ -17,11 +17,7 @@ impl Extras {
                 let mut downloader = Downloader::new(u).unwrap();
                 let dl = downloader.download(d.join("fpsunlock.exe").to_path_buf(), |_, _| {});
 
-                if dl.is_ok() {
-                    true
-                } else {
-                    false
-                }
+                dl.is_ok()
             } else {
                 false
             }
@@ -41,11 +37,7 @@ impl Extras {
                 let mut downloader = Downloader::new(u).unwrap();
                 let dl = downloader.download(d.join("jadeite.zip").to_path_buf(), |_, _| {});
 
-                if dl.is_ok() {
-                    true
-                } else {
-                    false
-                }
+                dl.is_ok()
             } else {
                 false
             }
@@ -127,11 +119,7 @@ impl Extras {
                     let mut downloader4 = Downloader::new(dlhi).unwrap();
                     let dl4 = downloader4.download(d.join("himi.zip").to_path_buf(), move |_, _| {});
 
-                    if dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() && dl4.is_ok() {
-                        true
-                    } else {
-                        false
-                    }
+                    dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() && dl4.is_ok()
                 } else {
                     false
                 }
@@ -170,11 +158,7 @@ impl Extras {
                     let mut downloader4 = Downloader::new(dlhi).unwrap();
                     let dl4 = downloader4.download(d.join("himi.zip").to_path_buf(), move |_, _| {});
 
-                    if dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() && dl4.is_ok() {
-                        true
-                    } else {
-                        false
-                    }
+                    dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() && dl4.is_ok()
                 } else {
                     false
                 }
