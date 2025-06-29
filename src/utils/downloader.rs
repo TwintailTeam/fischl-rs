@@ -15,11 +15,6 @@ use std::sync::Arc;
 use reqwest_middleware::ClientWithMiddleware;
 use tokio::io::AsyncWriteExt;
 
-#[cfg(target_os = "linux")]
-use std::os::unix::fs::MetadataExt;
-#[cfg(target_os = "windows")]
-use std::os::windows::fs::MetadataExt;
-
 pub const DEFAULT_CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
 
 #[derive(Error, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -376,7 +371,7 @@ impl Downloader {
                     return Err(DownloadingError::OutputFileError(path, err.to_string()));
                 }
 
-                downloaded += file.metadata().unwrap().size() as usize;
+                downloaded += file.metadata().unwrap().len() as usize;
                 progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
 
                 Ok(())
