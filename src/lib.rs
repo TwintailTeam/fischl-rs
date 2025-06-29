@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 pub mod compat;
 pub mod utils;
 pub mod download;
@@ -19,7 +20,8 @@ mod tests {
         }
     }*/
     use std::path::Path;
-    use crate::download::{Compatibility, Extras};
+    use crate::compat::Compat;
+    use crate::download::{Extras};
     use crate::download::game::{Game, Hoyo, Kuro, Sophon};
     use crate::utils::{extract_archive, prettify_bytes};
     use crate::utils::game::VoiceLocale;
@@ -45,13 +47,14 @@ mod tests {
     #[test]
     fn download_xxmi_packages_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/xxmi/testing";
-        let success = Extras::download_xxmi_packages(String::from("SilentNightSound/GIMI-Package"), String::from("SpectrumQT/SRMI-Package"), String::from("leotorrez/ZZMI-Package"), String::from("SpectrumQT/WWMI-Package"), dest.to_string(), false);
+        let success = Extras::download_xxmi_packages(String::from("SilentNightSound/GIMI-Package"), String::from("SpectrumQT/SRMI-Package"), String::from("leotorrez/ZZMI-Package"), String::from("SpectrumQT/WWMI-Package"), String::from("leotorrez/HIMI-Package"), dest.to_string());
         if success {
             let d = Path::new(&dest);
             extract_archive(d.join("gimi.zip").to_str().unwrap().to_string(), d.join("gimi").to_str().unwrap().to_string(), false);
             extract_archive(d.join("srmi.zip").to_str().unwrap().to_string(), d.join("srmi").to_str().unwrap().to_string(), false);
             extract_archive(d.join("zzmi.zip").to_str().unwrap().to_string(), d.join("zzmi").to_str().unwrap().to_string(), false);
             extract_archive(d.join("wwmi.zip").to_str().unwrap().to_string(), d.join("wwmi").to_str().unwrap().to_string(), false);
+            extract_archive(d.join("himi.zip").to_str().unwrap().to_string(), d.join("himi").to_str().unwrap().to_string(), false);
             println!("xxmi packages extracted!")
         } else {
             println!("Failed to download xxmi packages");
@@ -60,19 +63,12 @@ mod tests {
 
     #[test]
     fn download_runner_test() {
-        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/compatibility/runners/10.4-wine-vanilla";
+        let dest = "/home/tukan/.local/share/twintaillauncher/compatibility/runners/10.4-wine-vanilla";
         let url = "https://github.com/Kron4ek/Wine-Builds/releases/download/10.4/wine-10.4-amd64.tar.xz";
 
-        let success = Compatibility::download_runner(url.to_string(), dest.to_string());
+        let success = Compat::download_runner(url.to_string(), dest.to_string(), true);
         if success {
-            let finaldest = Path::new(dest).join("runner.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), true);
-
-            if extract {
-                println!("runner extracted!")
-            } else {
-                println!("Failed to extract!");
-            }
+            println!("runner extracted!");
         } else {
             println!("failed to download runner");
         }
@@ -80,19 +76,12 @@ mod tests {
 
     #[test]
     fn download_dxvk_test() {
-        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/compatibility/dxvk/2.6.0-vanilla";
+        let dest = "/home/tukan/.local/share/twintaillauncher/compatibility/dxvk/2.6.0-vanilla";
         let url = "https://github.com/doitsujin/dxvk/releases/download/v2.6/dxvk-2.6.tar.gz";
 
-        let success = Compatibility::download_dxvk(url.to_string(), dest.to_string());
+        let success = Compat::download_dxvk(url.to_string(), dest.to_string(), true);
         if success {
-            let finaldest = Path::new(dest).join("dxvk.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), true);
-
-            if extract {
-                println!("dxvk extracted!")
-            } else {
-                println!("Failed to extract!");
-            }
+            println!("dxvk extracted!");
         } else {
             println!("failed to download dxvk");
         }
@@ -100,7 +89,7 @@ mod tests {
 
     #[test]
     fn download_fpsunlock_test() {
-        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/extras/fps_unlock/testing";
+        let dest = "/home/tukan/.local/share/twintaillauncher/extras/fps_unlock/testing";
 
         let success = Extras::download_fps_unlock(String::from("mkrsym1/fpsunlock"), dest.to_string());
         if success {
@@ -112,7 +101,7 @@ mod tests {
 
     #[test]
     fn download_jadeite_test() {
-        let dest = "/home/tukan/.local/share/com.keqinglauncher.app/extras/jadeite/testing";
+        let dest = "/home/tukan/.local/share/twintaillauncher/extras/jadeite/testing";
 
         let success = Extras::download_jadeite(String::from("mkrsym1/jadeite"), dest.to_string());
         if success {

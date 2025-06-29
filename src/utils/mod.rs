@@ -3,7 +3,6 @@ use std::io::{Error, Read, Write};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::Command;
-use compress_tools::Ownership;
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
 use crate::utils::codeberg_structs::CodebergRelease;
@@ -73,14 +72,12 @@ pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs:
 
     if !src.exists() { false } else if !dest.exists() {
         fs::create_dir_all(dest).unwrap();
-        let mut file = fs::File::open(src).unwrap();
-        compress_tools::uncompress_archive(&mut file, dest, Ownership::Preserve).unwrap();
+        actually_uncompress(src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
         fs::remove_file(src).unwrap();
         if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
     } else {
-        let mut file = fs::File::open(src).unwrap();
-        compress_tools::uncompress_archive(&mut file, dest, Ownership::Preserve).unwrap();
+        actually_uncompress(src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
         fs::remove_file(src).unwrap();
         if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
@@ -218,6 +215,44 @@ pub fn patch_aki(file: String) {
             }).collect::<Vec<_>>().join("\n");
         fs::write(p, patched).unwrap();
     }
+}
+
+pub(crate) fn actually_uncompress(archive_path: String, dest: String) {
+    let ext = get_full_extension(archive_path.as_str()).unwrap();
+    match ext {
+        "zip" => {
+            let archive = zip::ZipArchive::new(fs::File::open(archive_path.clone()).unwrap());
+            if archive.is_ok() {
+                let mut a = archive.unwrap();
+                a.extract(dest).unwrap();
+            }
+        },
+        "tar.gz" => {
+            let archive = fs::File::open(archive_path).unwrap();
+            let decompressor = flate2::read::GzDecoder::new(archive);
+            let mut archive = tar::Archive::new(decompressor);
+            archive.unpack(dest).unwrap();
+        },
+        "tar.xz" => {
+            let file = fs::File::open(&archive_path).unwrap();
+            let mut buf = Vec::new();
+            lzma_rs::xz_decompress(&mut io::BufReader::new(file), &mut buf).unwrap();
+            let mut archive = tar::Archive::new(&buf[..]);
+            archive.unpack(dest).unwrap();
+        }
+        &_ => {}
+    }
+}
+
+pub(crate) fn get_full_extension(path: &str) -> Option<&str> {
+    const MULTI_PART_EXTS: [&str; 2] = ["tar.gz", "tar.xz"];
+    let file = path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(path);
+    for ext in MULTI_PART_EXTS {
+        if file.ends_with(ext) {
+            return Some(ext);
+        }
+    }
+    file.rsplit('.').nth(1).map(|_| file.rsplitn(2, '.').collect::<Vec<_>>()[0])
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

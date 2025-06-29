@@ -16,7 +16,6 @@ impl Extras {
                 let u = r.get(0).unwrap().assets.get(0).unwrap().browser_download_url.clone();
                 let mut downloader = Downloader::new(u).unwrap();
                 let dl = downloader.download(d.join("fpsunlock.exe").to_path_buf(), |_, _| {});
-
                 dl.is_ok()
             } else {
                 false
@@ -36,7 +35,6 @@ impl Extras {
                 let u = r.get(0).unwrap().assets.get(0).unwrap().browser_download_url.clone();
                 let mut downloader = Downloader::new(u).unwrap();
                 let dl = downloader.download(d.join("jadeite.zip").to_path_buf(), |_, _| {});
-
                 dl.is_ok()
             } else {
                 false
@@ -81,49 +79,9 @@ impl Extras {
         }
     }
 
-    pub fn download_xxmi_packages(gimi_repo: String, srmi_repo: String, zzmi_repo: String, wwmi_repo: String, himi_repo: String, dest: String, use_fork: bool) -> bool {
+    pub fn download_xxmi_packages(gimi_repo: String, srmi_repo: String, zzmi_repo: String, wwmi_repo: String, himi_repo: String, dest: String) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
-            if use_fork {
-                let gimi = get_tukanrepo_release(gimi_repo.clone());
-                let srmi = get_tukanrepo_release(srmi_repo.clone());
-                let zzmi = get_tukanrepo_release(zzmi_repo.clone());
-                let wwmi = get_tukanrepo_release(wwmi_repo.clone());
-                let himi = get_tukanrepo_release(himi_repo.clone());
-
-                if gimi.is_some() && srmi.is_some() && zzmi.is_some() && wwmi.is_some() && himi.is_some() {
-                    let gi = gimi.unwrap();
-                    let sr = srmi.unwrap();
-                    let zz = zzmi.unwrap();
-                    let ww = wwmi.unwrap();
-                    let hi = himi.unwrap();
-
-                    let dlg = gi.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
-                    let dlsr = sr.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
-                    let dlzz = zz.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
-                    let dlww = ww.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
-                    let dlhi = hi.get(0).unwrap().assets.get(0).unwrap().clone().browser_download_url;
-
-                    let mut downloader = Downloader::new(dlg).unwrap();
-                    let dl = downloader.download(d.join("gimi.zip").to_path_buf(), move |_, _| {});
-
-                    let mut downloader1 = Downloader::new(dlsr).unwrap();
-                    let dl1 = downloader1.download(d.join("srmi.zip").to_path_buf(), move |_, _| {});
-
-                    let mut downloader2 = Downloader::new(dlzz).unwrap();
-                    let dl2 = downloader2.download(d.join("zzmi.zip").to_path_buf(), move |_, _| {});
-
-                    let mut downloader3 = Downloader::new(dlww).unwrap();
-                    let dl3 = downloader3.download(d.join("wwmi.zip").to_path_buf(), move |_, _| {});
-
-                    let mut downloader4 = Downloader::new(dlhi).unwrap();
-                    let dl4 = downloader4.download(d.join("himi.zip").to_path_buf(), move |_, _| {});
-
-                    dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() && dl4.is_ok()
-                } else {
-                    false
-                }
-            } else {
                 let gimi = get_github_release(gimi_repo.clone());
                 let srmi = get_github_release(srmi_repo.clone());
                 let zzmi = get_github_release(zzmi_repo.clone());
@@ -157,12 +115,10 @@ impl Extras {
 
                     let mut downloader4 = Downloader::new(dlhi).unwrap();
                     let dl4 = downloader4.download(d.join("himi.zip").to_path_buf(), move |_, _| {});
-
                     dl.is_ok() && dl1.is_ok() && dl2.is_ok() && dl3.is_ok() && dl4.is_ok()
                 } else {
                     false
                 }
-            }
         } else {
             fs::create_dir_all(d).unwrap();
             false

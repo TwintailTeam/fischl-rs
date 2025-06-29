@@ -20,7 +20,7 @@ pub struct ManifestFile {
     pub md5: ::prost::alloc::string::String,
 }
 #[derive(serde::Serialize, serde::Deserialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileChunk {
     #[prost(string, tag = "1")]
     pub chunk_name: ::prost::alloc::string::String,
@@ -62,7 +62,7 @@ pub struct PatchFile {
     pub chunks: ::std::collections::HashMap<::prost::alloc::string::String, PatchChunk>,
 }
 #[derive(serde::Serialize, serde::Deserialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PatchChunk {
     #[prost(string, tag = "1")]
     pub patch_name: ::prost::alloc::string::String,
@@ -93,7 +93,7 @@ pub struct DeleteFiles {
     pub files: ::prost::alloc::vec::Vec<UnusuedFile>,
 }
 #[derive(serde::Serialize, serde::Deserialize)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UnusuedFile {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
