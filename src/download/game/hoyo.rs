@@ -286,7 +286,7 @@ impl Sophon for Game {
             }
     }
 
-    async fn patch(manifest: String, version: String, chunk_base: String, game_path: String, hpatchz_path: String, preloaded: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+    async fn patch(manifest: String, version: String, chunk_base: String, game_path: String, hpatchz_path: String, preloaded: bool, compression: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str()).to_path_buf();
@@ -359,40 +359,21 @@ impl Sophon for Game {
                                 if r {
                                     if chunk.original_filename.is_empty() {
                                         // Chunk is not a hdiff patchable, copy it over
-                                        let mut output = tokio::fs::File::create(&output_path).await.unwrap();
-                                        let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+                                        if compression {
+                                            let mut output = tokio::fs::File::create(&output_path).await.unwrap();
+                                            let chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
 
-                                        chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
-                                        let mut r = chunk_file.take(chunk.patch_length);
-                                        tokio::io::copy(&mut r, &mut output).await.unwrap();
-                                        output.flush().await.unwrap();
-                                        drop(output);
-                                    } else {
-                                        // Chunk is hdiff patchable, patch it
-                                        let mut output = tokio::fs::File::create(&diffp).await.unwrap();
-                                        let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+                                            let reader = tokio::io::BufReader::with_capacity(512 * 1024, chunk_file);
+                                            let mut decoder = ZstdDecoder::new(reader);
+                                            let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
+                                            tokio::io::copy(&mut decoder, &mut buffer).await.unwrap();
 
-                                        chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
-                                        let mut r = chunk_file.take(chunk.patch_length);
-                                        tokio::io::copy(&mut r, &mut output).await.unwrap();
-                                        output.flush().await.unwrap();
-                                        drop(output);
-
-                                        let of = mainp.join(&chunk.original_filename);
-                                        tokio::task::spawn_blocking(move || {
-                                            if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {}
-                                        });
-                                    }
-                                } else { continue; }
-                            } else {
-                                let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
-                                let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
-
-                                if dlf.is_ok() && chunkp.exists() {
-                                    let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
-                                    if r {
-                                        if chunk.original_filename.is_empty() {
-                                            // Chunk is not a hdiff patchable, copy it over
+                                            buffer.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                            let mut r = buffer.take(chunk.patch_length);
+                                            tokio::io::copy(&mut r, &mut output).await.unwrap();
+                                            output.flush().await.unwrap();
+                                            drop(output);
+                                        } else {
                                             let mut output = tokio::fs::File::create(&output_path).await.unwrap();
                                             let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
 
@@ -401,8 +382,29 @@ impl Sophon for Game {
                                             tokio::io::copy(&mut r, &mut output).await.unwrap();
                                             output.flush().await.unwrap();
                                             drop(output);
+                                        }
+                                    } else {
+                                        // Chunk is hdiff patchable, patch it
+                                        if compression {
+                                            let mut output = tokio::fs::File::create(&diffp).await.unwrap();
+                                            let chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+
+                                            let reader = tokio::io::BufReader::with_capacity(512 * 1024, chunk_file);
+                                            let mut decoder = ZstdDecoder::new(reader);
+                                            let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
+                                            tokio::io::copy(&mut decoder, &mut buffer).await.unwrap();
+
+                                            buffer.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                            let mut r = buffer.take(chunk.patch_length);
+                                            tokio::io::copy(&mut r, &mut output).await.unwrap();
+                                            output.flush().await.unwrap();
+                                            drop(output);
+
+                                            let of = mainp.join(&chunk.original_filename);
+                                            tokio::task::spawn_blocking(move || {
+                                                if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {}
+                                            });
                                         } else {
-                                            // Chunk is hdiff patchable, patch it
                                             let mut output = tokio::fs::File::create(&diffp).await.unwrap();
                                             let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
 
@@ -416,6 +418,78 @@ impl Sophon for Game {
                                             tokio::task::spawn_blocking(move || {
                                                 if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {}
                                             });
+                                        }
+                                    }
+                                } else { continue; }
+                            } else {
+                                let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
+                                let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+
+                                if dlf.is_ok() && chunkp.exists() {
+                                    let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
+                                    if r {
+                                        if chunk.original_filename.is_empty() {
+                                            // Chunk is not a hdiff patchable, copy it over
+                                            if compression {
+                                                let mut output = tokio::fs::File::create(&output_path).await.unwrap();
+                                                let chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+
+                                                let reader = tokio::io::BufReader::with_capacity(512 * 1024, chunk_file);
+                                                let mut decoder = ZstdDecoder::new(reader);
+                                                let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
+                                                tokio::io::copy(&mut decoder, &mut buffer).await.unwrap();
+
+                                                buffer.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                                let mut r = buffer.take(chunk.patch_length);
+                                                tokio::io::copy(&mut r, &mut output).await.unwrap();
+                                                output.flush().await.unwrap();
+                                                drop(output);
+                                            } else {
+                                                let mut output = tokio::fs::File::create(&output_path).await.unwrap();
+                                                let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+
+                                                chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                                let mut r = chunk_file.take(chunk.patch_length);
+                                                tokio::io::copy(&mut r, &mut output).await.unwrap();
+                                                output.flush().await.unwrap();
+                                                drop(output);
+                                            }
+                                        } else {
+                                            // Chunk is hdiff patchable, patch it
+                                            if compression {
+                                                let mut output = tokio::fs::File::create(&diffp).await.unwrap();
+                                                let chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+
+                                                let reader = tokio::io::BufReader::with_capacity(512 * 1024, chunk_file);
+                                                let mut decoder = ZstdDecoder::new(reader);
+                                                let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
+                                                tokio::io::copy(&mut decoder, &mut buffer).await.unwrap();
+
+                                                buffer.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                                let mut r = buffer.take(chunk.patch_length);
+                                                tokio::io::copy(&mut r, &mut output).await.unwrap();
+                                                output.flush().await.unwrap();
+                                                drop(output);
+
+                                                let of = mainp.join(&chunk.original_filename);
+                                                tokio::task::spawn_blocking(move || {
+                                                    if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {}
+                                                });
+                                            } else {
+                                                let mut output = tokio::fs::File::create(&diffp).await.unwrap();
+                                                let mut chunk_file = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
+
+                                                chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                                let mut r = chunk_file.take(chunk.patch_length);
+                                                tokio::io::copy(&mut r, &mut output).await.unwrap();
+                                                output.flush().await.unwrap();
+                                                drop(output);
+
+                                                let of = mainp.join(&chunk.original_filename);
+                                                tokio::task::spawn_blocking(move || {
+                                                    if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {}
+                                                });
+                                            }
                                         }
                                     } else { continue; }
                                 }
