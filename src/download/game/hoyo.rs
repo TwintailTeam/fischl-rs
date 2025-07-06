@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::io::SeekFrom;
+use std::io::{Cursor, SeekFrom};
 use std::path::{Path};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -367,9 +367,10 @@ impl Sophon for Game {
                                             let mut decoder = ZstdDecoder::new(reader);
                                             let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
                                             tokio::io::copy(&mut decoder, &mut buffer).await.unwrap();
+                                            let mut cursor = Cursor::new(buffer);
 
-                                            buffer.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
-                                            let mut r = buffer.take(chunk.patch_length);
+                                            cursor.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                            let mut r = cursor.take(chunk.patch_length);
                                             tokio::io::copy(&mut r, &mut output).await.unwrap();
                                             output.flush().await.unwrap();
                                             drop(output);
@@ -393,9 +394,10 @@ impl Sophon for Game {
                                             let mut decoder = ZstdDecoder::new(reader);
                                             let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
                                             tokio::io::copy(&mut decoder, &mut buffer).await.unwrap();
+                                            let mut cursor = Cursor::new(buffer);
 
-                                            buffer.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
-                                            let mut r = buffer.take(chunk.patch_length);
+                                            cursor.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                            let mut r = cursor.take(chunk.patch_length);
                                             tokio::io::copy(&mut r, &mut output).await.unwrap();
                                             output.flush().await.unwrap();
                                             drop(output);
@@ -438,9 +440,10 @@ impl Sophon for Game {
                                                 let mut decoder = ZstdDecoder::new(reader);
                                                 let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
                                                 tokio::io::copy(&mut decoder, &mut buffer).await.unwrap();
+                                                let mut cursor = Cursor::new(buffer);
 
-                                                buffer.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
-                                                let mut r = buffer.take(chunk.patch_length);
+                                                cursor.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                                let mut r = cursor.take(chunk.patch_length);
                                                 tokio::io::copy(&mut r, &mut output).await.unwrap();
                                                 output.flush().await.unwrap();
                                                 drop(output);
@@ -464,9 +467,10 @@ impl Sophon for Game {
                                                 let mut decoder = ZstdDecoder::new(reader);
                                                 let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
                                                 tokio::io::copy(&mut decoder, &mut buffer).await.unwrap();
+                                                let mut cursor = Cursor::new(buffer);
 
-                                                buffer.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
-                                                let mut r = buffer.take(chunk.patch_length);
+                                                cursor.seek(SeekFrom::Start(chunk.patch_offset)).await.unwrap();
+                                                let mut r = cursor.take(chunk.patch_length);
                                                 tokio::io::copy(&mut r, &mut output).await.unwrap();
                                                 output.flush().await.unwrap();
                                                 drop(output);
