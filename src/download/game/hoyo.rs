@@ -170,7 +170,7 @@ impl Sophon for Game {
                         async move {
                             if file.r#type == 64 { return; }
 
-                            let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(60);
+                            let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(80);
 
                             let client = client.clone();
                             let chunkpp = chunkpp.clone();
@@ -255,7 +255,7 @@ impl Sophon for Game {
                                         }
                                     }
                                 }
-                            })).buffer_unordered(60).collect::<Vec<_>>();
+                            })).buffer_unordered(80).collect::<Vec<_>>();
                             chunk_tasks.await;
                             drop(tx);
                             writer_handle.await.ok();
@@ -588,7 +588,7 @@ impl Sophon for Game {
 
                         if ff.r#type == 64 { return; }
 
-                        let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(60);
+                        let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(80);
 
                         if !outputp.exists() {
                             if outputp.exists() {
@@ -662,7 +662,7 @@ impl Sophon for Game {
                                         }
                                     }
                                 }
-                            })).buffer_unordered(60).collect::<Vec<()>>();
+                            })).buffer_unordered(80).collect::<Vec<()>>();
                             chunk_tasks.await;
                             drop(tx);
                             writer_handle.await.ok();
@@ -750,7 +750,7 @@ impl Sophon for Game {
                                             }
                                         }
                                     }
-                                })).buffer_unordered(60).collect::<Vec<()>>();
+                                })).buffer_unordered(80).collect::<Vec<()>>();
                                 chunk_tasks.await;
                                 drop(tx);
                                 writer_handle.await.ok();

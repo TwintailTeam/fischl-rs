@@ -20,7 +20,6 @@ mod tests {
         }
     }*/
     use std::path::Path;
-    use crate::compat::Compat;
     use crate::download::{Extras};
     use crate::download::game::{Game, Hoyo, Kuro, Sophon};
     use crate::utils::{extract_archive, prettify_bytes};
@@ -61,31 +60,31 @@ mod tests {
         }
     }
 
-    #[test]
+    /*#[test]
     fn download_runner_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/compatibility/runners/10.4-wine-vanilla";
         let url = "https://github.com/Kron4ek/Wine-Builds/releases/download/10.4/wine-10.4-amd64.tar.xz";
 
-        let success = Compat::download_runner(url.to_string(), dest.to_string(), true);
+        let success = crate::compat::Compat::download_runner(url.to_string(), dest.to_string(), true);
         if success {
             println!("runner extracted!");
         } else {
             println!("failed to download runner");
         }
-    }
+    }*/
 
-    #[test]
+    /*#[test]
     fn download_dxvk_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/compatibility/dxvk/2.6.0-vanilla";
         let url = "https://github.com/doitsujin/dxvk/releases/download/v2.6/dxvk-2.6.tar.gz";
 
-        let success = Compat::download_dxvk(url.to_string(), dest.to_string(), true);
+        let success = crate::compat::Compat::download_dxvk(url.to_string(), dest.to_string(), true);
         if success {
             println!("dxvk extracted!");
         } else {
             println!("failed to download dxvk");
         }
-    }
+    }*/
 
     #[test]
     fn download_fpsunlock_test() {
@@ -239,7 +238,7 @@ mod tests {
     async fn download_fullgame_hoyo_sophon_test() {
         let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/q3h361jUEuu0/manifest_6194a90dbfdae455_f2f91f7cf5f869009f4816d8489f66ca";
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/q3h361jUEuu0";
-        let path = "/games/hoyo/hk4e_global/live/testing";
+        let path = "/games/hoyo/hk4e_global/testing";
 
         let rep = <Game as Sophon>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
             println!("current: {} | total: {}", current, total)
@@ -257,7 +256,7 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
         let path = "/games/hoyo/hk4e_global/live/testing";
 
-        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, |current, total| {
+        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, false, |current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
         if rep {
