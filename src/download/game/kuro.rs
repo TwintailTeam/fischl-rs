@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::sync::{Arc};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use futures_util::StreamExt;
 use tokio::io::{AsyncReadExt};
 use crate::download::game::{Game, Kuro};
@@ -8,7 +8,7 @@ use crate::utils::downloader::{AsyncDownloader};
 use crate::utils::{move_all, validate_checksum, KuroIndex};
 
 impl Kuro for Game {
-    async fn download<F>(manifest: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+    async fn download<F>(manifest: String, chunk_base: String, game_path: String, cancel: Arc<AtomicBool>, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
 
         let p = Path::new(game_path.as_str()).to_path_buf().join("downloading");
@@ -30,13 +30,15 @@ impl Kuro for Game {
             let progress_counter = Arc::new(AtomicU64::new(0));
             let progress = Arc::new(progress);
 
-            let file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
+            let mut file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
                 let chunk_base = chunk_base.clone();
                 let staging = staging.clone();
                 let client = client.clone();
                 let progress = progress.clone();
                 let progress_counter = progress_counter.clone();
                 async move {
+                    if cancel.load(Ordering::Relaxed) { return; }
+
                     let progress_counter = progress_counter.clone();
                     let progress = progress.clone();
                     let client = client.clone();
@@ -56,11 +58,14 @@ impl Kuro for Game {
                         progress(processed, total_bytes);
                         return;
                     } else {
+                        if cancel.load(Ordering::Relaxed) { return; }
                         if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                     }
 
                     let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                     let dlf = dl.download(output_path.clone(), |_, _| {}).await;
+
+                    if cancel.load(Ordering::Relaxed) { return; }
 
                     if dlf.is_ok() && output_path.exists() {
                         let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
@@ -69,6 +74,7 @@ impl Kuro for Game {
                             let processed = progress_counter.load(Ordering::SeqCst);
                             progress(processed, total_bytes);
                         } else {
+                            if cancel.load(Ordering::Relaxed) { return; }
                             // Retry to download if we fail
                             let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                             let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
@@ -83,8 +89,11 @@ impl Kuro for Game {
                         }
                     }
                 }
-            })).buffer_unordered(10).collect::<Vec<()>>();
-            file_tasks.await;
+            })).buffer_unordered(10);
+            while let Some(_) = file_tasks.next().await {
+                if cancel.load(Ordering::Relaxed) { return false; }
+            }
+            if cancel.load(Ordering::Relaxed) { return false; }
             // All files are complete make sure we report done just in case
             progress(total_bytes, total_bytes);
             // Move from "staging" to "game_path" and delete "downloading" directory
@@ -96,7 +105,7 @@ impl Kuro for Game {
         }
     }
 
-    async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, preloaded: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+    async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, preloaded: bool, cancel: Arc<AtomicBool>, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() || version.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str());
@@ -120,17 +129,21 @@ impl Kuro for Game {
             let progress = Arc::new(progress);
 
             if files.patch_infos.is_some() {
+                if cancel.load(Ordering::Relaxed) { return true; }
                 // has krdiff
                 if preloaded { true } else { true }
             } else {
+                if cancel.load(Ordering::Relaxed) { return false; }
                 // No krdiff download every resource available
-                let file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
+                let mut file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
                     let chunk_base = chunk_base.clone();
                     let staging = staging.clone();
                     let client = client.clone();
                     let progress = progress.clone();
                     let progress_counter = progress_counter.clone();
                     async move {
+                        if cancel.load(Ordering::Relaxed) { return; }
+
                         let progress_counter = progress_counter.clone();
                         let progress = progress.clone();
                         let client = client.clone();
@@ -150,11 +163,14 @@ impl Kuro for Game {
                             progress(processed, total_bytes);
                             return;
                         } else {
+                            if cancel.load(Ordering::Relaxed) { return; }
                             if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                         }
 
                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                         let dlf = dl.download(output_path.clone(), |_, _| {}).await;
+
+                        if cancel.load(Ordering::Relaxed) { return; }
 
                         if dlf.is_ok() && output_path.exists() {
                             let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
@@ -163,9 +179,13 @@ impl Kuro for Game {
                                 let processed = progress_counter.load(Ordering::SeqCst);
                                 progress(processed, total_bytes);
                             } else {
+                                if cancel.load(Ordering::Relaxed) { return; }
                                 // Retry to download if we fail
                                 let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                                 let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
+
+                                if cancel.load(Ordering::Relaxed) { return; }
+
                                 if dlf1.is_ok() {
                                     let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
                                     if r2 {
@@ -177,8 +197,11 @@ impl Kuro for Game {
                             }
                         }
                     }
-                })).buffer_unordered(10).collect::<Vec<()>>();
-                file_tasks.await;
+                })).buffer_unordered(10);
+                while let Some(_) = file_tasks.next().await {
+                    if cancel.load(Ordering::Relaxed) { return false; }
+                }
+                if cancel.load(Ordering::Relaxed) { return false; }
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
                 // Move from "staging" to "game_path" and delete "patching" directory
@@ -202,7 +225,7 @@ impl Kuro for Game {
         }
     }
 
-    async fn repair_game<F>(manifest: String, chunk_base: String, game_path: String, is_fast: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+    async fn repair_game<F>(manifest: String, chunk_base: String, game_path: String, is_fast: bool, cancel: Arc<AtomicBool>, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str());
@@ -222,12 +245,14 @@ impl Kuro for Game {
             let progress_counter = Arc::new(AtomicU64::new(0));
             let progress = Arc::new(progress);
 
-            let file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
+            let mut file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
                 let chunk_base = chunk_base.clone();
                 let client = client.clone();
                 let progress = progress.clone();
                 let progress_counter = progress_counter.clone();
                 async move {
+                    if cancel.load(Ordering::Relaxed) { return; }
+
                     let mainp = mainp.join(ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
 
                     let cb = chunk_base.clone();
@@ -246,9 +271,13 @@ impl Kuro for Game {
                                 if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                             }
 
+                            if cancel.load(Ordering::Relaxed) { return; }
+
                             let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
                             let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                             let dlf = dl.download(output_path.clone(), |_, _| {}).await;
+
+                            if cancel.load(Ordering::Relaxed) { return; }
 
                             if dlf.is_ok() && output_path.exists() {
                                 let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
@@ -257,9 +286,12 @@ impl Kuro for Game {
                                     let processed = progress_counter.load(Ordering::SeqCst);
                                     progress(processed, total_bytes);
                                 } else {
+                                    if cancel.load(Ordering::Relaxed) { return; }
                                     // Retry to download if we fail
                                     let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                                     let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
+                                    if cancel.load(Ordering::Relaxed) { return; }
+
                                     if dlf1.is_ok() {
                                         let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
                                         if r2 {
@@ -268,7 +300,6 @@ impl Kuro for Game {
                                             progress(processed, total_bytes);
                                         }
                                     }
-
                                 }
                             }
                         } else {
@@ -284,9 +315,13 @@ impl Kuro for Game {
                             if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                         }
 
+                        if cancel.load(Ordering::Relaxed) { return; }
+
                         let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                         let dlf = dl.download(output_path.clone(), |_, _| {}).await;
+
+                        if cancel.load(Ordering::Relaxed) { return; }
 
                         if dlf.is_ok() && output_path.exists() {
                             let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
@@ -295,9 +330,12 @@ impl Kuro for Game {
                                 let processed = progress_counter.load(Ordering::SeqCst);
                                 progress(processed, total_bytes);
                             } else {
+                                if cancel.load(Ordering::Relaxed) { return; }
                                 // Retry to download if we fail
                                 let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{filen}").to_string()).await.unwrap();
                                 let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
+                                if cancel.load(Ordering::Relaxed) { return; }
+
                                 if dlf1.is_ok() {
                                     let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
                                     if r2 {
@@ -310,8 +348,11 @@ impl Kuro for Game {
                         }
                     }
                 }
-            })).buffer_unordered(10).collect::<Vec<()>>();
-            file_tasks.await;
+            })).buffer_unordered(10);
+            while let Some(_) = file_tasks.next().await {
+                if cancel.load(Ordering::Relaxed) { return false; }
+            }
+            if cancel.load(Ordering::Relaxed) { return false; }
             // All files are complete make sure we report done just in case
             progress(total_bytes, total_bytes);
             if p.exists() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
@@ -321,8 +362,9 @@ impl Kuro for Game {
         }
     }
 
-    async fn preload(manifest: String, version: String, chunk_base: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+    async fn preload(manifest: String, version: String, chunk_base: String, game_path: String, cancel: Arc<AtomicBool>, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() || version.is_empty() { return false; }
+        if cancel.load(Ordering::Relaxed) { return true; }
         progress(1000, 1000);
         true
     }

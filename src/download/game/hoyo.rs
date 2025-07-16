@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::io::{Cursor, SeekFrom};
 use std::path::{Path};
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use async_compression::tokio::bufread::ZstdDecoder;
 use futures_util::StreamExt;
 use prost::Message;
@@ -14,53 +14,52 @@ use crate::utils::game::list_integrity_files;
 use crate::utils::proto::{DeleteFiles, PatchChunk, SophonDiff, SophonManifest};
 
 impl Hoyo for Game {
-    fn download(urls: Vec<String>, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
-        if urls.is_empty() || game_path.is_empty() {
-            return false;
-        }
+    fn download(urls: Vec<String>, game_path: String, cancel: Arc<AtomicBool>, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+        if urls.is_empty() || game_path.is_empty() { return false; }
 
+        if cancel.load(Ordering::Relaxed) { return false; }
         let progress = Arc::new(Mutex::new(progress));
         for url in urls {
+            if cancel.load(Ordering::Relaxed) { return false; }
             let p = progress.clone();
+            if cancel.load(Ordering::Relaxed) { return false; }
             let mut downloader = Downloader::new(url).unwrap();
             let file = downloader.get_filename().to_string();
             downloader.download(Path::new(game_path.as_str()).to_path_buf().join(&file), move |current, total| {
                 let pl = p.lock().unwrap();
                 pl(current, total);
             }).unwrap();
-
+            if cancel.load(Ordering::Relaxed) { return false; }
         }
         true
     }
 
-    fn patch(url: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
-        if url.is_empty() || game_path.is_empty() {
-            return false;
-        }
-
+    fn patch(url: String, game_path: String, cancel: Arc<AtomicBool>, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+        if url.is_empty() || game_path.is_empty() { return false; }
+        if cancel.load(Ordering::Relaxed) { return false; }
         let mut downloader = Downloader::new(url).unwrap();
         let file = downloader.get_filename().to_string();
         let dl = downloader.download(Path::new(game_path.as_str()).to_path_buf().join(&file), progress);
-
-        if dl.is_ok() {
-            true
-        } else {
-            false
-        }
+        if cancel.load(Ordering::Relaxed) { return false; }
+        if dl.is_ok() { true } else { false }
     }
 
-    fn repair_game(res_list: String, game_path: String, is_fast: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+    fn repair_game(res_list: String, game_path: String, is_fast: bool, cancel: Arc<AtomicBool>, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         let files = list_integrity_files(res_list, "pkg_version".parse().unwrap());
+        if cancel.load(Ordering::Relaxed) { return false; }
 
         if files.is_some() {
             let f = files.unwrap();
             let progress = Arc::new(Mutex::new(progress));
+            if cancel.load(Ordering::Relaxed) { return false; }
 
             f.iter().for_each(|file| {
+                if cancel.load(Ordering::Relaxed) { return; }
                 let p = progress.clone();
                 let path = Path::new(game_path.as_str());
 
                 if is_fast {
+                    if cancel.load(Ordering::Relaxed) { return; }
                     let rslt= file.fast_verify(path.to_path_buf().clone());
                     if !rslt {
                         file.repair(path.to_path_buf(), move |current, total| {
@@ -68,7 +67,9 @@ impl Hoyo for Game {
                             pl(current, total);
                         });
                     }
+                    if cancel.load(Ordering::Relaxed) { return; }
                 } else {
+                    if cancel.load(Ordering::Relaxed) { return; }
                     let rslt = file.verify(path.to_path_buf().clone());
                     if !rslt {
                         file.repair(path.to_path_buf(), move |current, total| {
@@ -76,6 +77,7 @@ impl Hoyo for Game {
                             pl(current, total);
                         });
                     }
+                    if cancel.load(Ordering::Relaxed) { return; }
                 }
             });
             true
@@ -121,8 +123,9 @@ impl Hoyo for Game {
 }
 
 impl Sophon for Game {
-    async fn download<F>(manifest: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+    async fn download<F>(manifest: String, chunk_base: String, game_path: String, cancel: Arc<AtomicBool>, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
+        if cancel.load(Ordering::Relaxed) { return false; }
 
         let p = Path::new(game_path.as_str()).to_path_buf().join("downloading");
         let client = Arc::new(AsyncDownloader::setup_client().await);
@@ -131,7 +134,9 @@ impl Sophon for Game {
         let file = dl.get_filename().await.to_string();
         let dll = dl.download(p.clone().join(&file), |_, _| {}).await;
 
-            if dll.is_ok() {
+        if cancel.load(Ordering::Relaxed) { return false; }
+
+        if dll.is_ok() {
                 let m = tokio::fs::File::open(p.join(&file).as_path()).await.unwrap();
                 let out = tokio::fs::File::create(p.join("manifest").as_path()).await.unwrap();
                 let mut decoder = ZstdDecoder::new(tokio::io::BufReader::new(m));
@@ -141,6 +146,8 @@ impl Sophon for Game {
                 if rslt.is_ok() {
                     writer.flush().await.unwrap();
                     drop(writer);
+
+                    if cancel.load(Ordering::Relaxed) { return false; }
 
                     let mut f = tokio::fs::OpenOptions::new().read(true).open(p.join("manifest").as_path()).await.unwrap();
                     let mut file_contents = Vec::new();
@@ -160,7 +167,10 @@ impl Sophon for Game {
                     let progress_counter = Arc::new(AtomicU64::new(0));
                     let progress = Arc::new(progress);
 
+                    if cancel.load(Ordering::Relaxed) { return false; }
+
                     let file_tasks = futures::stream::iter(decoded.files.into_iter().map(|file| {
+                        if cancel.load(Ordering::Relaxed) { return; }
                         let chunk_base = chunk_base.clone();
                         let chunkpp = chunks.clone();
                         let staging = staging.clone();
@@ -168,6 +178,7 @@ impl Sophon for Game {
                         let progress = progress.clone();
                         let progress_counter = progress_counter.clone();
                         async move {
+                            if cancel.load(Ordering::Relaxed) { return; }
                             if file.r#type == 64 { return; }
 
                             let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(80);
@@ -188,9 +199,11 @@ impl Sophon for Game {
                                 progress(processed, total_bytes);
                                 return;
                             } else {
+                                if cancel.load(Ordering::Relaxed) { return; }
                                 if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                             }
 
+                            if cancel.load(Ordering::Relaxed) { return; }
                             let to_delete = Arc::new(tokio::sync::Mutex::new(HashSet::new()));
                             let mut output = tokio::fs::File::create(&output_path).await.unwrap();
                             output.set_len(file.size as u64).await.unwrap();
@@ -204,13 +217,17 @@ impl Sophon for Game {
                                 drop(output);
                             });
 
-                            let chunk_tasks = futures::stream::iter(file.chunks.into_iter().map(|chunk| {
+                            if cancel.load(Ordering::Relaxed) { return; }
+
+                            let mut chunk_tasks = futures::stream::iter(file.chunks.into_iter().map(|chunk| {
+                                if cancel.load(Ordering::Relaxed) { return; }
                                 let cb = chunk_base.clone();
                                 let chunkpp = chunkpp.clone();
                                 let client = client.clone();
                                 let to_delete = to_delete.clone();
                                 let tx = tx.clone();
                                 async move {
+                                    if cancel.load(Ordering::Relaxed) { return; }
                                     let cb = cb.clone();
                                     let cc = chunk.clone();
                                     let tx = tx.clone();
@@ -221,8 +238,11 @@ impl Sophon for Game {
                                     let cn = cc.chunk_name.clone();
                                     let chunkp = chunkpp.join(cn.clone());
 
+                                    if cancel.load(Ordering::Relaxed) { return; }
+
                                     let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                     let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+                                    if cancel.load(Ordering::Relaxed) { return; }
 
                                     if dlf.is_ok() && chunkp.exists() {
                                         let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
@@ -236,9 +256,12 @@ impl Sophon for Game {
                                             del.insert(chunkp.clone());
                                             drop(del);
                                         }
+                                        if cancel.load(Ordering::Relaxed) { return; }
                                     } else {
+                                        if cancel.load(Ordering::Relaxed) { return; }
                                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                         let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+                                        if cancel.load(Ordering::Relaxed) { return; }
 
                                         if dlf.is_ok() {
                                             let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
@@ -252,11 +275,14 @@ impl Sophon for Game {
                                                 del.insert(chunkp.clone());
                                                 drop(del);
                                             }
+                                            if cancel.load(Ordering::Relaxed) { return; }
                                         }
                                     }
                                 }
-                            })).buffer_unordered(80).collect::<Vec<_>>();
-                            chunk_tasks.await;
+                            })).buffer_unordered(80);
+                            while let Some(_) = chunk_tasks.next().await {
+                                if cancel.load(Ordering::Relaxed) { return; }
+                            }
                             drop(tx);
                             writer_handle.await.ok();
 
@@ -268,10 +294,12 @@ impl Sophon for Game {
                                 let to_delete = to_delete.lock().await;
                                 for chunk in to_delete.iter() { tokio::fs::remove_file(&chunk).await.unwrap(); }
                                 drop(to_delete);
+                                if cancel.load(Ordering::Relaxed) { return; }
                             } else {  }
                         }
                     })).buffer_unordered(1).collect::<Vec<_>>();
                     file_tasks.await;
+                    if cancel.load(Ordering::Relaxed) { return false; }
                     // All files are complete make sure we report done just in case
                     progress(total_bytes, total_bytes);
                     // Move from "staging" to "game_path" and delete "downloading" directory
@@ -286,16 +314,20 @@ impl Sophon for Game {
             }
     }
 
-    async fn patch(manifest: String, version: String, chunk_base: String, game_path: String, hpatchz_path: String, preloaded: bool, compression: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+    async fn patch(manifest: String, version: String, chunk_base: String, game_path: String, hpatchz_path: String, preloaded: bool, compression: bool, cancel: Arc<AtomicBool>, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
+        if cancel.load(Ordering::Relaxed) { return false; }
 
         let mainp = Path::new(game_path.as_str()).to_path_buf();
         let p = mainp.join("patching");
         let client = Arc::new(AsyncDownloader::setup_client().await);
 
+        if cancel.load(Ordering::Relaxed) { return false; }
+
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
         let file = dl.get_filename().await.to_string();
         let dll = dl.download(p.clone().join(&file), |_, _| {}).await;
+        if cancel.load(Ordering::Relaxed) { return false; }
 
         if dll.is_ok() {
             let m = tokio::fs::File::open(p.join(&file).as_path()).await.unwrap();
@@ -306,6 +338,7 @@ impl Sophon for Game {
 
             if rslt.is_ok() {
                 writer.flush().await.unwrap();
+                if cancel.load(Ordering::Relaxed) { return false; }
 
                 let mut f = tokio::fs::File::open(p.join("manifest").as_path()).await.unwrap();
                 let mut file_contents = Vec::new();
@@ -323,8 +356,10 @@ impl Sophon for Game {
 
                 let total_bytes: u64 = decoded.files.iter().map(|f| f.size).sum();
                 let progress_counter = Arc::new(AtomicU64::new(0));
+                if cancel.load(Ordering::Relaxed) { return false; }
 
                 for file in decoded.files {
+                    if cancel.load(Ordering::Relaxed) { return false; }
                     let file = Arc::new(file.clone());
                     let hpatchz_path = hpatchz_path.clone();
                     let output_path = staging.join(file.name.clone());
@@ -338,20 +373,25 @@ impl Sophon for Game {
                         progress(processed, total_bytes);
                         continue;
                     } else {
+                        if cancel.load(Ordering::Relaxed) { return false; }
                         if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                     }
 
                     let filtered: Vec<(String, PatchChunk)> = file.chunks.clone().into_iter().filter(|(v, _chunk)| version.as_str() == v.as_str()).collect();
+                    if cancel.load(Ordering::Relaxed) { return false; }
 
                     // File has patches to apply
                     if !filtered.is_empty() {
+                        if cancel.load(Ordering::Relaxed) { return false; }
                         for (_v, chunk) in filtered.into_iter() {
+                            if cancel.load(Ordering::Relaxed) { return false; }
                             let output_path = output_path.clone();
                             let hpatchz_path = hpatchz_path.clone();
 
                             let pn = chunk.patch_name;
                             let chunkp = chunks.join(pn.clone());
                             let diffp = chunks.join(format!("{}.hdiff", chunk.patch_md5));
+                            if cancel.load(Ordering::Relaxed) { return false; }
 
                             // User has predownloaded validate each chunk and apply patches
                             if preloaded {
@@ -384,6 +424,7 @@ impl Sophon for Game {
                                             output.flush().await.unwrap();
                                             drop(output);
                                         }
+                                        if cancel.load(Ordering::Relaxed) { return false; }
                                     } else {
                                         // Chunk is hdiff patchable, patch it
                                         if compression {
@@ -422,10 +463,13 @@ impl Sophon for Game {
                                             });
                                         }
                                     }
+                                    if cancel.load(Ordering::Relaxed) { return false; }
                                 } else { continue; }
                             } else {
+                                if cancel.load(Ordering::Relaxed) { return false; }
                                 let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
                                 let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+                                if cancel.load(Ordering::Relaxed) { return false; }
 
                                 if dlf.is_ok() && chunkp.exists() {
                                     let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
@@ -495,6 +539,7 @@ impl Sophon for Game {
                                                 });
                                             }
                                         }
+                                        if cancel.load(Ordering::Relaxed) { return false; }
                                     } else { continue; }
                                 }
                             } // preload check end
@@ -507,6 +552,7 @@ impl Sophon for Game {
                             progress(processed, total_bytes);
                         }
                     } else { continue; }
+                    if cancel.load(Ordering::Relaxed) { return false; }
                 }
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
@@ -534,8 +580,9 @@ impl Sophon for Game {
         }
     }
 
-    async fn repair_game<F>(manifest: String, chunk_base: String, game_path: String, is_fast: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+    async fn repair_game<F>(manifest: String, chunk_base: String, game_path: String, is_fast: bool, cancel: Arc<AtomicBool>, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
+        if cancel.load(Ordering::Relaxed) { return false; }
 
         let mainp = Path::new(game_path.as_str());
         let p = mainp.to_path_buf().join("repairing");
@@ -544,6 +591,7 @@ impl Sophon for Game {
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
         let file = dl.get_filename().await.to_string();
         let dll = dl.download(p.clone().join(&file), |_, _| {}).await;
+        if cancel.load(Ordering::Relaxed) { return false; }
 
         if dll.is_ok() {
             let m = tokio::fs::File::open(p.join(&file).as_path()).await.unwrap();
@@ -554,6 +602,7 @@ impl Sophon for Game {
 
             if rslt.is_ok() {
                 writer.flush().await.unwrap();
+                if cancel.load(Ordering::Relaxed) { return false; }
 
                 let mut f = tokio::fs::File::open(p.join("manifest").as_path()).await.unwrap();
                 let mut file_contents = Vec::new();
@@ -570,6 +619,7 @@ impl Sophon for Game {
                 let total_bytes: u64 = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.size as u64).sum();
                 let progress_counter = Arc::new(AtomicU64::new(0));
                 let progress = Arc::new(progress);
+                if cancel.load(Ordering::Relaxed) { return false; }
 
                 let file_tasks = futures::stream::iter(decoded.files.into_iter().map(|ff| {
                     let chunk_base = chunk_base.clone();
@@ -578,6 +628,7 @@ impl Sophon for Game {
                     let progress = progress.clone();
                     let progress_counter = progress_counter.clone();
                     async move {
+                        if cancel.load(Ordering::Relaxed) { return; }
                         let mainp = mainp;
                         let outputp = mainp.join(&ff.name);
                         let chunkpp = chunkpp.clone();
@@ -590,18 +641,22 @@ impl Sophon for Game {
 
                         let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(80);
 
+                        if cancel.load(Ordering::Relaxed) { return; }
                         if !outputp.exists() {
                             if outputp.exists() {
                                 tokio::fs::remove_file(&outputp).await.unwrap();
                                 if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                             } else {
+                                if cancel.load(Ordering::Relaxed) { return; }
                                 if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                             }
 
+                            if cancel.load(Ordering::Relaxed) { return; }
                             let to_delete = Arc::new(tokio::sync::Mutex::new(HashSet::new()));
                             let mut output = tokio::fs::File::create(&outputp).await.unwrap();
                             output.set_len(ff.size as u64).await.unwrap();
 
+                            if cancel.load(Ordering::Relaxed) { return; }
                             let writer_handle = tokio::spawn(async move {
                                 while let Some((offset, buffer)) = rx.recv().await {
                                     if let Err(e) = output.seek(SeekFrom::Start(offset)).await { println!("Seek failed: {e}"); break; }
@@ -610,14 +665,16 @@ impl Sophon for Game {
                                 }
                                 drop(output);
                             });
+                            if cancel.load(Ordering::Relaxed) { return; }
 
-                            let chunk_tasks = futures::stream::iter(ff.chunks.into_iter().map(|chunk| {
+                            let mut chunk_tasks = futures::stream::iter(ff.chunks.into_iter().map(|chunk| {
                                 let cb = cb.clone();
                                 let chunkpp = chunkpp.clone();
                                 let client = client.clone();
                                 let to_delete = to_delete.clone();
                                 let tx = tx.clone();
                                 async move {
+                                    if cancel.load(Ordering::Relaxed) { return; }
                                     let cb = cb.clone();
                                     let cc = chunk.clone();
                                     let tx = tx.clone();
@@ -628,8 +685,10 @@ impl Sophon for Game {
                                     let cn = cc.chunk_name.clone();
                                     let chunkp = chunkpp.join(cn.clone());
 
+                                    if cancel.load(Ordering::Relaxed) { return; }
                                     let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                     let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+                                    if cancel.load(Ordering::Relaxed) { return; }
 
                                     if dlf.is_ok() && chunkp.exists() {
                                         let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
@@ -643,9 +702,12 @@ impl Sophon for Game {
                                             del.insert(chunkp.clone());
                                             drop(del);
                                         }
+                                        if cancel.load(Ordering::Relaxed) { return; }
                                     } else {
+                                        if cancel.load(Ordering::Relaxed) { return; }
                                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                         let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+                                        if cancel.load(Ordering::Relaxed) { return; }
 
                                         if dlf.is_ok() {
                                             let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
@@ -659,13 +721,17 @@ impl Sophon for Game {
                                                 del.insert(chunkp.clone());
                                                 drop(del);
                                             }
+                                            if cancel.load(Ordering::Relaxed) { return; }
                                         }
                                     }
                                 }
-                            })).buffer_unordered(80).collect::<Vec<()>>();
-                            chunk_tasks.await;
+                            })).buffer_unordered(80);
+                            while let Some(_) = chunk_tasks.next().await {
+                                if cancel.load(Ordering::Relaxed) { return; }
+                            }
                             drop(tx);
                             writer_handle.await.ok();
+                            if cancel.load(Ordering::Relaxed) { return; }
 
                             let r2 = if is_fast { outputp.metadata().unwrap().len() as i64 == ff.size } else { validate_checksum(outputp.as_path(), ff.md5.to_ascii_lowercase()).await };
                             if r2 {
@@ -676,16 +742,20 @@ impl Sophon for Game {
                                 for chunk in to_delete.iter() { tokio::fs::remove_file(&chunk).await.unwrap(); }
                                 drop(to_delete);
                             } else {  }
+                            if cancel.load(Ordering::Relaxed) { return; }
                         } else {
+                            if cancel.load(Ordering::Relaxed) { return; }
                             let valid = if is_fast { outputp.metadata().unwrap().len() == ff.size as u64 } else { validate_checksum(&outputp, ff.md5.to_ascii_lowercase()).await };
                             if !valid {
                                 if outputp.exists() {
                                     tokio::fs::remove_file(&outputp).await.unwrap();
                                     if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                                 } else {
+                                    if cancel.load(Ordering::Relaxed) { return; }
                                     if let Some(parent) = outputp.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
                                 }
 
+                                if cancel.load(Ordering::Relaxed) { return; }
                                 let to_delete = Arc::new(tokio::sync::Mutex::new(HashSet::new()));
                                 let mut output = tokio::fs::File::create(&outputp).await.unwrap();
                                 output.set_len(ff.size as u64).await.unwrap();
@@ -698,14 +768,16 @@ impl Sophon for Game {
                                     }
                                     drop(output);
                                 });
+                                if cancel.load(Ordering::Relaxed) { return; }
 
-                                let chunk_tasks = futures::stream::iter(ff.chunks.into_iter().map(|chunk| {
+                                let mut chunk_tasks = futures::stream::iter(ff.chunks.into_iter().map(|chunk| {
                                     let cb = chunk_base.clone();
                                     let chunkpp = chunkpp.clone();
                                     let client = client.clone();
                                     let to_delete = to_delete.clone();
                                     let tx = tx.clone();
                                     async move {
+                                        if cancel.load(Ordering::Relaxed) { return; }
                                         let cb = cb.clone();
                                         let cc = chunk.clone();
                                         let tx = tx.clone();
@@ -716,8 +788,10 @@ impl Sophon for Game {
                                         let cn = cc.chunk_name.clone();
                                         let chunkp = chunkpp.join(cn.clone());
 
+                                        if cancel.load(Ordering::Relaxed) { return; }
                                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                         let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+                                        if cancel.load(Ordering::Relaxed) { return; }
 
                                         if dlf.is_ok() && chunkp.exists() {
                                             let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
@@ -731,9 +805,12 @@ impl Sophon for Game {
                                                 del.insert(chunkp.clone());
                                                 drop(del);
                                             }
+                                            if cancel.load(Ordering::Relaxed) { return; }
                                         } else {
+                                            if cancel.load(Ordering::Relaxed) { return; }
                                             let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                             let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+                                            if cancel.load(Ordering::Relaxed) { return; }
 
                                             if dlf.is_ok() {
                                                 let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
@@ -747,13 +824,17 @@ impl Sophon for Game {
                                                     del.insert(chunkp.clone());
                                                     drop(del);
                                                 }
+                                                if cancel.load(Ordering::Relaxed) { return; }
                                             }
                                         }
                                     }
-                                })).buffer_unordered(80).collect::<Vec<()>>();
-                                chunk_tasks.await;
+                                })).buffer_unordered(80);
+                                while let Some(_) = chunk_tasks.next().await {
+                                    if cancel.load(Ordering::Relaxed) { return; }
+                                }
                                 drop(tx);
                                 writer_handle.await.ok();
+                                if cancel.load(Ordering::Relaxed) { return; }
 
                                 let r2 = if is_fast { outputp.metadata().unwrap().len() as i64 == ff.size } else { validate_checksum(outputp.as_path(), ff.md5.to_ascii_lowercase()).await };
                                 if r2 {
@@ -764,15 +845,18 @@ impl Sophon for Game {
                                     for chunk in to_delete.iter() { tokio::fs::remove_file(&chunk).await.unwrap(); }
                                     drop(to_delete);
                                 } else {  }
+                                if cancel.load(Ordering::Relaxed) { return; }
                             } else {
                                 progress_counter.fetch_add(ff.size as u64, Ordering::SeqCst);
                                 let processed = progress_counter.load(Ordering::SeqCst);
                                 progress(processed, total_bytes);
                             }
+                            if cancel.load(Ordering::Relaxed) { return; }
                         }
                     }
                 })).buffer_unordered(1).collect::<Vec<()>>();
                 file_tasks.await;
+                if cancel.load(Ordering::Relaxed) { return false; }
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
                 if p.exists() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
@@ -783,8 +867,9 @@ impl Sophon for Game {
         } else { false }
     }
 
-    async fn preload(manifest: String, version: String, chunk_base: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+    async fn preload(manifest: String, version: String, chunk_base: String, game_path: String, cancel: Arc<AtomicBool>, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
+        if cancel.load(Ordering::Relaxed) { return false; }
 
         let mainp = Path::new(game_path.as_str()).to_path_buf();
         let p = mainp.join("patching");
@@ -793,6 +878,7 @@ impl Sophon for Game {
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
         let file = dl.get_filename().await.to_string();
         let dll = dl.download(p.clone().join(&file), |_, _| {}).await;
+        if cancel.load(Ordering::Relaxed) { return false; }
 
         if dll.is_ok() {
             let m = tokio::fs::File::open(p.join(&file).as_path()).await.unwrap();
@@ -803,6 +889,7 @@ impl Sophon for Game {
 
             if rslt.is_ok() {
                 writer.flush().await.unwrap();
+                if cancel.load(Ordering::Relaxed) { return false; }
 
                 let mut f = tokio::fs::File::open(p.join("manifest").as_path()).await.unwrap();
                 let mut file_contents = Vec::new();
@@ -822,6 +909,7 @@ impl Sophon for Game {
                 let total_bytes: u64 = decoded.files.iter().map(|f| f.size).sum();
                 let progress_counter = Arc::new(AtomicU64::new(0));
                 let progress = Arc::new(progress);
+                if cancel.load(Ordering::Relaxed) { return false; }
 
                 let file_tasks = futures::stream::iter(decoded.files.into_iter().map(|file| {
                     let client = client.clone();
@@ -832,6 +920,7 @@ impl Sophon for Game {
                     let progress = progress.clone();
                     let progress_counter = progress_counter.clone();
                     async move {
+                        if cancel.load(Ordering::Relaxed) { return; }
                         let file = file.clone();
                         let version = version.clone();
                         let chunkp = chunkp.clone();
@@ -839,6 +928,7 @@ impl Sophon for Game {
                         let filtered: Vec<(String, PatchChunk)> = file.chunks.clone().into_iter().filter(|(v, _chunk)| version.as_str() == v.as_str()).collect();
                         // File has patches to apply
                         if !filtered.is_empty() {
+                            if cancel.load(Ordering::Relaxed) { return; }
                             for (_v, chunk) in filtered.into_iter() {
                                 let pn = chunk.patch_name;
                                 let chunkp = chunkp.join(pn.clone());
@@ -850,8 +940,10 @@ impl Sophon for Game {
                                     return;
                                 }
 
+                                if cancel.load(Ordering::Relaxed) { return; }
                                 let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
                                 let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+                                if cancel.load(Ordering::Relaxed) { return; }
 
                                 if dlf.is_ok() && chunkp.exists() {
                                     let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
@@ -861,11 +953,13 @@ impl Sophon for Game {
                                         progress(processed, total_bytes);
                                     }
                                 }
+                                if cancel.load(Ordering::Relaxed) { return; }
                             }
                         } // end
                     }
-                })).buffer_unordered(10).collect::<Vec<()>>();
+                })).buffer_unordered(20).collect::<Vec<()>>();
                 file_tasks.await;
+                if cancel.load(Ordering::Relaxed) { return false; }
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
                 true
