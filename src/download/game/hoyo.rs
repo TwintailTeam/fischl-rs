@@ -170,6 +170,7 @@ impl Sophon for Game {
                     if cancel.load(Ordering::Relaxed) { return false; }
 
                     let file_tasks = futures::stream::iter(decoded.files.into_iter().map(|file| {
+                        if cancel.load(Ordering::Relaxed) { return; }
                         let chunk_base = chunk_base.clone();
                         let chunkpp = chunks.clone();
                         let staging = staging.clone();
@@ -221,18 +222,19 @@ impl Sophon for Game {
                             if cancel.load(Ordering::Relaxed) { return; }
 
                             let mut chunk_tasks = futures::stream::iter(file.chunks.into_iter().map(|chunk| {
+                                if cancel.load(Ordering::Relaxed) { return; }
                                 let cb = chunk_base.clone();
                                 let chunkpp = chunkpp.clone();
                                 let client = client.clone();
                                 let to_delete = to_delete.clone();
-                                let txx = tx.clone();
+                                let tx = tx.clone();
                                 let cancel = cancel.clone();
                                 async move {
                                     let cancel = cancel.clone();
                                     if cancel.load(Ordering::Relaxed) { return; }
                                     let cb = cb.clone();
                                     let cc = chunk.clone();
-                                    let txx = txx.clone();
+                                    let tx = tx.clone();
                                     let chunkpp = chunkpp.clone();
                                     let client = client.clone();
                                     let to_delete = to_delete.clone();
@@ -253,7 +255,7 @@ impl Sophon for Game {
                                         let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
 
                                         if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
-                                            if let Err(e) = txx.send((chunk.chunk_on_file_offset as u64, buffer)).await { println!("[ERROR] Failed to send chunk data: {e}"); }
+                                            if let Err(e) = tx.send((chunk.chunk_on_file_offset as u64, buffer)).await { println!("[ERROR] Failed to send chunk data: {e}"); }
                                             let mut del = to_delete.lock().await;
                                             del.insert(chunkp.clone());
                                             drop(del);
@@ -272,7 +274,7 @@ impl Sophon for Game {
                                             let mut buffer = Vec::with_capacity(cc.chunk_size as usize);
 
                                             if tokio::io::copy(&mut decoder, &mut buffer).await.is_ok() {
-                                                if let Err(e) = txx.send((chunk.chunk_on_file_offset as u64, buffer)).await { println!("[ERROR] Failed to send chunk data: {e}"); }
+                                                if let Err(e) = tx.send((chunk.chunk_on_file_offset as u64, buffer)).await { println!("[ERROR] Failed to send chunk data: {e}"); }
                                                 let mut del = to_delete.lock().await;
                                                 del.insert(chunkp.clone());
                                                 drop(del);
@@ -285,8 +287,8 @@ impl Sophon for Game {
                             while let Some(_) = chunk_tasks.next().await {
                                 if cancel.load(Ordering::Relaxed) { return; }
                             }
+                            drop(tx);
                             writer_handle.await.ok();
-                            if cancel.load(Ordering::Relaxed) { return; }
 
                             let r2 = validate_checksum(output_path.as_path(), file.md5.to_ascii_lowercase()).await;
                             if r2 {
@@ -735,6 +737,7 @@ impl Sophon for Game {
                             while let Some(_) = chunk_tasks.next().await {
                                 if cancel.load(Ordering::Relaxed) { return; }
                             }
+                            drop(tx);
                             writer_handle.await.ok();
                             if cancel.load(Ordering::Relaxed) { return; }
 
@@ -839,6 +842,7 @@ impl Sophon for Game {
                                 while let Some(_) = chunk_tasks.next().await {
                                     if cancel.load(Ordering::Relaxed) { return; }
                                 }
+                                drop(tx);
                                 writer_handle.await.ok();
                                 if cancel.load(Ordering::Relaxed) { return; }
 
