@@ -229,7 +229,7 @@ impl Sophon for Game {
                                 let cancel = cancel.clone();
                                 async move {
                                     let cancel = cancel.clone();
-                                    if cancel.load(Ordering::Relaxed) { return false; }
+                                    if cancel.load(Ordering::Relaxed) { return; }
                                     let cb = cb.clone();
                                     let cc = chunk.clone();
                                     let txx = txx.clone();
@@ -240,11 +240,11 @@ impl Sophon for Game {
                                     let cn = cc.chunk_name.clone();
                                     let chunkp = chunkpp.join(cn.clone());
 
-                                    if cancel.load(Ordering::Relaxed) { return false; }
+                                    if cancel.load(Ordering::Relaxed) { return; }
 
                                     let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                     let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
-                                    if cancel.load(Ordering::Relaxed) { return false; }
+                                    if cancel.load(Ordering::Relaxed) { return; }
 
                                     if dlf.is_ok() && chunkp.exists() {
                                         let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
@@ -258,12 +258,12 @@ impl Sophon for Game {
                                             del.insert(chunkp.clone());
                                             drop(del);
                                         }
-                                        if cancel.load(Ordering::Relaxed) { return false; } else { return false; }
+                                        if cancel.load(Ordering::Relaxed) { return; }
                                     } else {
-                                        if cancel.load(Ordering::Relaxed) { return false; }
+                                        if cancel.load(Ordering::Relaxed) { return; }
                                         let mut dl = AsyncDownloader::new(client.clone(), format!("{cb}/{cn}").to_string()).await.unwrap();
                                         let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
-                                        if cancel.load(Ordering::Relaxed) { return false; }
+                                        if cancel.load(Ordering::Relaxed) { return; }
 
                                         if dlf.is_ok() {
                                             let c = tokio::fs::File::open(chunkp.as_path()).await.unwrap();
@@ -277,8 +277,8 @@ impl Sophon for Game {
                                                 del.insert(chunkp.clone());
                                                 drop(del);
                                             }
-                                            if cancel.load(Ordering::Relaxed) { return false; } else { return false; };
-                                        } else { return false; }
+                                            if cancel.load(Ordering::Relaxed) { return; }
+                                        }
                                     }
                                 }
                             })).buffer_unordered(80);
