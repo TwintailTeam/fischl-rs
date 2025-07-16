@@ -177,9 +177,7 @@ impl Sophon for Game {
                         let client = client.clone();
                         let progress = progress.clone();
                         let progress_counter = progress_counter.clone();
-                        let cancel = cancel.clone();
                         async move {
-                            let cancel = cancel.clone();
                             if cancel.load(Ordering::Relaxed) { return; }
                             if file.r#type == 64 { return; }
 
@@ -228,9 +226,7 @@ impl Sophon for Game {
                                 let client = client.clone();
                                 let to_delete = to_delete.clone();
                                 let tx = tx.clone();
-                                let cancel = cancel.clone();
                                 async move {
-                                    let cancel = cancel.clone();
                                     if cancel.load(Ordering::Relaxed) { return; }
                                     let cb = cb.clone();
                                     let cc = chunk.clone();
@@ -631,9 +627,7 @@ impl Sophon for Game {
                     let client = client.clone();
                     let progress = progress.clone();
                     let progress_counter = progress_counter.clone();
-                    let cancel = cancel.clone();
                     async move {
-                        let cancel = cancel.clone();
                         if cancel.load(Ordering::Relaxed) { return; }
                         let mainp = mainp;
                         let outputp = mainp.join(&ff.name);
@@ -679,9 +673,7 @@ impl Sophon for Game {
                                 let client = client.clone();
                                 let to_delete = to_delete.clone();
                                 let tx = tx.clone();
-                                let cancel = cancel.clone();
                                 async move {
-                                    let cancel = cancel.clone();
                                     if cancel.load(Ordering::Relaxed) { return; }
                                     let cb = cb.clone();
                                     let cc = chunk.clone();
@@ -784,9 +776,7 @@ impl Sophon for Game {
                                     let client = client.clone();
                                     let to_delete = to_delete.clone();
                                     let tx = tx.clone();
-                                    let cancel = cancel.clone();
                                     async move {
-                                        let cancel = cancel.clone();
                                         if cancel.load(Ordering::Relaxed) { return; }
                                         let cb = cb.clone();
                                         let cc = chunk.clone();
@@ -929,9 +919,7 @@ impl Sophon for Game {
                     let file = file.clone();
                     let progress = progress.clone();
                     let progress_counter = progress_counter.clone();
-                    let cancel = cancel.clone();
                     async move {
-                        let cancel = cancel.clone();
                         if cancel.load(Ordering::Relaxed) { return; }
                         let file = file.clone();
                         let version = version.clone();

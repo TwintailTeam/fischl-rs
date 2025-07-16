@@ -36,9 +36,7 @@ impl Kuro for Game {
                 let client = client.clone();
                 let progress = progress.clone();
                 let progress_counter = progress_counter.clone();
-                let cancel = cancel.clone();
                 async move {
-                    let cancel = cancel.clone();
                     if cancel.load(Ordering::Relaxed) { return; }
 
                     let progress_counter = progress_counter.clone();
@@ -143,9 +141,7 @@ impl Kuro for Game {
                     let client = client.clone();
                     let progress = progress.clone();
                     let progress_counter = progress_counter.clone();
-                    let cancel = cancel.clone();
                     async move {
-                        let cancel = cancel.clone();
                         if cancel.load(Ordering::Relaxed) { return; }
 
                         let progress_counter = progress_counter.clone();
@@ -254,9 +250,7 @@ impl Kuro for Game {
                 let client = client.clone();
                 let progress = progress.clone();
                 let progress_counter = progress_counter.clone();
-                let cancel = cancel.clone();
                 async move {
-                    let cancel = cancel.clone();
                     if cancel.load(Ordering::Relaxed) { return; }
 
                     let mainp = mainp.join(ff.dest.strip_prefix("/").unwrap_or(&ff.dest));
