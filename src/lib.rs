@@ -20,6 +20,8 @@ mod tests {
         }
     }*/
     use std::path::Path;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
     use crate::download::{Extras};
     use crate::download::game::{Game, Hoyo, Kuro, Sophon};
     use crate::utils::{extract_archive, prettify_bytes};
@@ -122,7 +124,7 @@ mod tests {
     fn repair_game_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = <Game as Hoyo>::repair_game(res_list, path.parse().unwrap(), false, |_, _| {});
+        let rep = <Game as Hoyo>::repair_game(res_list, path.parse().unwrap(), false, Arc::new(AtomicBool::new(false)), |_, _| {});
         if rep { 
             println!("repair_game success!");
         } else {
@@ -158,7 +160,7 @@ mod tests {
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/Audio_English(US)_5.5.0.zip"));
 
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Hoyo>::download(urls, path.parse().unwrap(), |current, total| {
+        let rep = <Game as Hoyo>::download(urls, path.parse().unwrap(), Arc::new(AtomicBool::new(false)), |current, total| {
             println!("current: {} | total: {}", current, total);
         });
         if rep {
@@ -172,7 +174,7 @@ mod tests {
     fn download_hdiff_test() {
         let url = "https://autopatchhk.yuanshen.com/client_app/update/hk4e_global/game_5.4.0_5.5.0_hdiff_IlvHovyEdpXnwiCH.zip";
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Hoyo>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
+        let rep = <Game as Hoyo>::patch(url.parse().unwrap(), path.parse().unwrap(), Arc::new(AtomicBool::new(false)), |current,total| {
             println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
         });
         if rep {
@@ -191,7 +193,7 @@ mod tests {
         let chunkurl_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.3.1/axFplYInrILNAVwHsqPWvgirHzeKeBgS/zip";
 
         let path = "/games/kuro/wuwa_global/live/testing";
-        let rep = <Game as Kuro>::repair_game(manifest_wuwa.to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), false, |_, _| {}).await;
+        let rep = <Game as Kuro>::repair_game(manifest_wuwa.to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), false, Arc::new(AtomicBool::new(false)), |_, _| {}).await;
         if rep {
             println!("repair_game_kuro success!");
         } else {
@@ -207,7 +209,7 @@ mod tests {
         let chunkurl_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.3.1/axFplYInrILNAVwHsqPWvgirHzeKeBgS/zip";
 
         let path = "/games/kuro/wuwa_global/live/testing";
-        let rep = <Game as Kuro>::download(manifest_wuwa.to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), |current, total| {
+        let rep = <Game as Kuro>::download(manifest_wuwa.to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), Arc::new(AtomicBool::new(false)), |current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
         if rep {
@@ -223,7 +225,7 @@ mod tests {
         let chunkurl_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.3.1/axFplYInrILNAVwHsqPWvgirHzeKeBgS/zip";
 
         let path = "/games/kuro/wuwa_global/live/testing";
-        let rep = <Game as Kuro>::patch(manifest_wuwa.to_string(), "2.3.0".to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), false, |current,total| {
+        let rep = <Game as Kuro>::patch(manifest_wuwa.to_string(), "2.3.0".to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), false, Arc::new(AtomicBool::new(false)), |current,total| {
             println!("current: {}, total: {}", current, total);
         }).await;
         if rep {
@@ -240,7 +242,7 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/q3h361jUEuu0";
         let path = "/games/hoyo/hk4e_global/testing";
 
-        let rep = <Game as Sophon>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
+        let rep = <Game as Sophon>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), Arc::new(AtomicBool::new(false)), |current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
         if rep {
@@ -256,7 +258,7 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
         let path = "/games/hoyo/hk4e_global/live/testing";
 
-        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, false, |current, total| {
+        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, false, Arc::new(AtomicBool::new(false)), |current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
         if rep {
@@ -272,7 +274,7 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/3j90WyoOpfjt";
         let path = "/games/hoyo/hk4e_global/live/testing";
 
-        let rep = <Game as Sophon>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false,|current, total| {
+        let rep = <Game as Sophon>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false, Arc::new(AtomicBool::new(false)),|current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
         if rep {
@@ -288,7 +290,7 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
         let path = "/games/hoyo/hk4e_global/live/testing";
 
-        let rep = <Game as Sophon>::preload(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
+        let rep = <Game as Sophon>::preload(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), Arc::new(AtomicBool::new(false)), |current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
         if rep {
