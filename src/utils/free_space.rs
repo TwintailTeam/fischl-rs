@@ -10,7 +10,7 @@ pub fn available(path: impl AsRef<Path>) -> Option<u64> {
         a.cmp(&b).reverse()
     });
 
-    let path = path.as_ref().read_link().unwrap_or_else(|_| path.as_ref().to_path_buf());
+    let path = path.as_ref().canonicalize().unwrap_or_else(|_| path.as_ref().to_path_buf());
 
     for disk in disks.iter() {
         if path.starts_with(disk.mount_point()) {
@@ -29,8 +29,8 @@ pub fn is_same_disk(path1: impl AsRef<Path>, path2: impl AsRef<Path>) -> bool {
         a.cmp(&b).reverse()
     });
 
-    let path1 = path1.as_ref().read_link().unwrap_or_else(|_| path1.as_ref().to_path_buf());
-    let path2 = path2.as_ref().read_link().unwrap_or_else(|_| path2.as_ref().to_path_buf());
+    let path1 = path1.as_ref().canonicalize().unwrap_or_else(|_| path1.as_ref().to_path_buf());
+    let path2 = path2.as_ref().canonicalize().unwrap_or_else(|_| path2.as_ref().to_path_buf());
 
     for disk in disks.iter() {
         let disk_path = disk.mount_point();
