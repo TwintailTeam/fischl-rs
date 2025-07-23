@@ -14,7 +14,7 @@ pub trait Hoyo {
 #[allow(async_fn_in_trait)]
 pub trait Kuro {
     async fn download<F>(manifest: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static;
-    async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, preloaded: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static;
+    async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, krpatchz_path: String, preloaded: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static;
     async fn repair_game<F>(manifest: String, chunk_base: String, game_path: String, is_fast: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static;
     async fn preload(manifest: String, version: String, chunk_base: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool;
 }

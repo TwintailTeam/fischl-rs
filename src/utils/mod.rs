@@ -206,6 +206,15 @@ pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, pa
     }
 }
 
+pub fn krpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, source: T, patch: T) -> io::Result<()> {
+    let output = Command::new(bin_path.as_str()).arg("--verbose").arg("-i").arg(patch.into().as_os_str()).arg(source.into().as_os_str()).output()?;
+
+    if String::from_utf8_lossy(output.stdout.as_slice()).contains("[INFO] Everything patched with success") { Ok(()) } else {
+        let err = String::from_utf8_lossy(&output.stderr);
+        Err(Error::other(format!("Failed to apply krdiff patch: {err}")))
+    }
+}
+
 pub fn patch_aki(file: String) {
     let p = Path::new(&file);
     if p.exists() {
@@ -260,6 +269,12 @@ pub struct KuroIndex {
     pub delete_files: Option<Vec<String>>,
     #[serde(rename = "patchInfos", default)]
     pub patch_infos: Option<Vec<KuroPatchEntry>>,
+    #[serde(rename = "groupResource", default)]
+    pub group_resource: Vec<KuroResource>,
+    #[serde(rename = "groupInfos", default)]
+    pub group_infos: Vec<KuroGroupInfos>,
+    #[serde(rename = "applyTypes", default)]
+    pub apply_types: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -284,4 +299,13 @@ pub struct KuroChunkInfos {
     pub start: u64,
     pub end: u64,
     pub md5: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct KuroGroupInfos {
+    pub dest: String,
+    #[serde(rename = "srcFiles", default)]
+    pub src_files: Vec<KuroResource>,
+    #[serde(rename = "dstFiles", default)]
+    pub dst_files: Vec<KuroResource>,
 }
