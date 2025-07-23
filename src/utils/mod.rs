@@ -235,9 +235,8 @@ pub(crate) fn actually_uncompress(archive_path: String, dest: String) {
         },
         "tar.xz" => {
             let file = fs::File::open(&archive_path).unwrap();
-            let mut buf = Vec::new();
-            lzma_rs::xz_decompress(&mut io::BufReader::new(file), &mut buf).unwrap();
-            let mut archive = tar::Archive::new(&buf[..]);
+            let decompressor = liblzma::read::XzDecoder::new(file);
+            let mut archive = tar::Archive::new(decompressor);
             archive.unpack(dest).unwrap();
         }
         &_ => {}

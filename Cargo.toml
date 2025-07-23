@@ -29,10 +29,10 @@ futures = "0.3"
 zip = {version = "4.2.0", default-features = false, features = ["deflate"], optional = true}
 tar = {version = "0.4.44", optional = true}
 flate2 = {version = "1.1.2", default-features = false, features = ["zlib-rs"], optional = true}
-lzma-rs = {version = "0.3.0", optional = true}
+liblzma = {version = "0.4.2", features = ["static"], optional = true}
 
 [features]
 compat = ["dep:wincompatlib"]
-download = ["dep:zip", "dep:tar", "dep:flate2", "dep:lzma-rs", "dep:chksum-md5", "dep:async-compression", "dep:prost"]
+download = ["dep:zip", "dep:tar", "dep:flate2", "dep:liblzma", "dep:chksum-md5", "dep:async-compression", "dep:prost"]
 
 default = ["download"]
