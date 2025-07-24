@@ -13,7 +13,6 @@ pub fn available(path: impl AsRef<Path>) -> Option<u64> {
     let path = path.as_ref().canonicalize().unwrap_or_else(|_| path.as_ref().to_path_buf());
 
     for disk in disks.iter() {
-        println!("mountpoint: {:?} | path: {:?}", disk.mount_point(), path);
         if path.starts_with(disk.mount_point()) {
             return Some(disk.available_space());
         }
