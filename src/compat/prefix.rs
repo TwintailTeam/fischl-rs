@@ -20,7 +20,7 @@ impl Compat {
             let dl = downloader.download(dp.clone(), |_, _| {});
             if dl.is_ok() {
                 if extract {
-                    let r = extract_archive(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true);
+                    let r = extract_archive("".to_string(), dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true);
                     r
                 } else {
                     dl.is_ok()
