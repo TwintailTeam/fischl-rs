@@ -216,7 +216,7 @@ pub fn krpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, source: T,
 }
 
 pub fn seven_zip<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, output: T) -> io::Result<()> {
-    let output = Command::new(bin_path.as_str()).arg("x").arg(format!("-o{output}")).arg(file.into().as_mut_os_str()).output()?;
+    let output = Command::new(bin_path.as_str()).arg("x").arg(format!("-o{}", output.into().to_str().unwrap())).arg(file.into().as_mut_os_str()).output()?;
 
     if output.status.success() { Ok(()) } else {
         let err = String::from_utf8_lossy(&output.stderr);
