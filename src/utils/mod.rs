@@ -249,8 +249,8 @@ pub(crate) fn actually_uncompress(archive_path: String, dest: String) {
             archive.unpack(dest).unwrap();
         }
         "7z" => {
-            let file = Path::new(&archive_path);
-            sevenz_rust2::decompress_file(file, dest.as_str()).unwrap();
+            let file = fs::File::open(&archive_path).unwrap();
+            sevenz_rust::decompress(&file, &dest).unwrap();
         }
         &_ => {}
     }
