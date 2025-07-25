@@ -248,6 +248,10 @@ pub(crate) fn actually_uncompress(archive_path: String, dest: String) {
             let mut archive = tar::Archive::new(decompressor);
             archive.unpack(dest).unwrap();
         }
+        "7z" => {
+            let file = Path::new(&archive_path);
+            sevenz_rust2::decompress_file(file, dest.as_str()).unwrap();
+        }
         &_ => {}
     }
 }
