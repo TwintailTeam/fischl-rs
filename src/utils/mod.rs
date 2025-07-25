@@ -66,18 +66,18 @@ pub(crate) fn get_tukanrepo_release(repository: String) -> Option<CodebergReleas
     }
 }
 
-pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs: bool) -> bool {
+pub fn extract_archive(sevenz_bin: String, archive_path: String, extract_dest: String, move_subdirs: bool) -> bool {
     let src = Path::new(&archive_path);
     let dest = Path::new(&extract_dest);
 
     if !src.exists() { false } else if !dest.exists() {
         fs::create_dir_all(dest).unwrap();
-        actually_uncompress(src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
+        actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
         fs::remove_file(src).unwrap();
         if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
     } else {
-        actually_uncompress(src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
+        actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
         fs::remove_file(src).unwrap();
         if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
@@ -215,6 +215,15 @@ pub fn krpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, source: T,
     }
 }
 
+pub fn seven_zip<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, output: T) -> io::Result<()> {
+    let output = Command::new(bin_path.as_str()).arg("x").arg(format!("-o{output}")).arg(file.into().as_mut_os_str()).output()?;
+
+    if output.status.success() { Ok(()) } else {
+        let err = String::from_utf8_lossy(&output.stderr);
+        Err(Error::other(format!("Failed to extract archive: {err}")))
+    }
+}
+
 pub fn patch_aki(file: String) {
     let p = Path::new(&file);
     if p.exists() {
@@ -226,7 +235,7 @@ pub fn patch_aki(file: String) {
     }
 }
 
-pub(crate) fn actually_uncompress(archive_path: String, dest: String) {
+pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest: String) {
     let ext = get_full_extension(archive_path.as_str()).unwrap();
     match ext {
         "zip" => {
@@ -249,8 +258,7 @@ pub(crate) fn actually_uncompress(archive_path: String, dest: String) {
             archive.unpack(dest).unwrap();
         }
         "7z" => {
-            let file = fs::File::open(&archive_path).unwrap();
-            sevenz_rust::decompress(&file, &dest).unwrap();
+            seven_zip(sevenz_bin, archive_path.clone(), dest).unwrap();
         }
         &_ => {}
     }
