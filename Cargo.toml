@@ -30,7 +30,7 @@ zip = {version = "4.2.0", default-features = false, features = ["deflate"], opti
 tar = {version = "0.4.44", optional = true}
 flate2 = {version = "1.1.2", default-features = false, features = ["zlib-rs"], optional = true}
 liblzma = {version = "0.4.2", features = ["static"], optional = true}
-sevenz-rust2 = {version = "0.17.0", optional = true}
+sevenz-rust2 = {version = "0.17.0", features = ["lz4", "deflate"], optional = true}
 
 [features]
 compat = ["dep:wincompatlib"]
