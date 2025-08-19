@@ -683,7 +683,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
 
     let file = tokio::fs::OpenOptions::new().create(true).write(true).open(&fp).await.unwrap();
     file.set_len(chunk_task.size).await.unwrap();
-    let mut writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
+    let writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
     let blocking_limiter = Arc::new(tokio::sync::Semaphore::new(100));
 
     let mut chunk_futures = FuturesUnordered::new();

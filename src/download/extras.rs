@@ -58,13 +58,12 @@ impl Extras {
 
                 if dl.is_ok() {
                     if with_loader {
-                        let rel = get_github_release("TwintailTeam/3dmloader-Package".to_string());
-                        if rel.is_some() {
-                            let r = rel.unwrap();
-                            let filtered = r.assets.into_iter().filter(|a| a.name.to_ascii_lowercase().contains("3dmloader")).collect::<Vec<Asset>>();
-                            let u = filtered.get(0).unwrap().clone().browser_download_url.clone();
-                            let mut dl1 = Downloader::new(u).unwrap();
-                            dl1.download(d.join("3dmloader.exe").to_path_buf(), |_, _| {}).unwrap();
+                        let r1 = get_github_release("TwintailTeam/3dmloader-Package".to_string());
+                        if r1.is_some() {
+                            let r = r1.unwrap();
+                            let u = r.assets.get(0).unwrap().clone().browser_download_url.clone();
+                            downloader = Downloader::new(u).unwrap();
+                            downloader.download(d.join("3dmloader.exe").to_path_buf(), |_, _| {}).unwrap();
                         }
                     }
                     true

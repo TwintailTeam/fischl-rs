@@ -52,7 +52,7 @@ pub struct Asset {
     pub id: i64,
     pub node_id: String,
     pub name: String,
-    pub label: String,
+    pub label: Option<String>,
     pub uploader: Uploader,
     pub content_type: String,
     pub state: String,
