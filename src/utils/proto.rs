@@ -14,8 +14,8 @@ pub struct ManifestFile {
     pub chunks: ::prost::alloc::vec::Vec<FileChunk>,
     #[prost(int32, tag = "3")]
     pub r#type: i32,
-    #[prost(int64, tag = "4")]
-    pub size: i64,
+    #[prost(uint64, tag = "4")]
+    pub size: u64,
     #[prost(string, tag = "5")]
     pub md5: ::prost::alloc::string::String,
 }
@@ -26,14 +26,14 @@ pub struct FileChunk {
     pub chunk_name: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub chunk_decompressed_md5: ::prost::alloc::string::String,
-    #[prost(int64, tag = "3")]
-    pub chunk_on_file_offset: i64,
-    #[prost(int64, tag = "4")]
-    pub chunk_size: i64,
-    #[prost(int64, tag = "5")]
-    pub chunk_decompressed_size: i64,
-    #[prost(int64, tag = "6")]
-    pub something: i64,
+    #[prost(uint64, tag = "3")]
+    pub chunk_on_file_offset: u64,
+    #[prost(uint64, tag = "4")]
+    pub chunk_size: u64,
+    #[prost(uint64, tag = "5")]
+    pub chunk_decompressed_size: u64,
+    #[prost(uint64, tag = "6")]
+    pub something: u64,
     #[prost(string, tag = "7")]
     pub chunk_md5: ::prost::alloc::string::String,
 }

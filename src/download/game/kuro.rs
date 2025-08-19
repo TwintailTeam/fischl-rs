@@ -83,7 +83,7 @@ impl Kuro for Game {
                         }
                     }
                 }
-            })).buffer_unordered(10).collect::<Vec<()>>();
+            })).buffer_unordered(8).collect::<Vec<()>>();
             file_tasks.await;
             // All files are complete make sure we report done just in case
             progress(total_bytes, total_bytes);
@@ -278,7 +278,7 @@ impl Kuro for Game {
                             }
                         }
                     }
-                })).buffer_unordered(10).collect::<Vec<()>>();
+                })).buffer_unordered(8).collect::<Vec<()>>();
                 file_tasks.await;
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
@@ -411,7 +411,7 @@ impl Kuro for Game {
                         }
                     }
                 }
-            })).buffer_unordered(10).collect::<Vec<()>>();
+            })).buffer_unordered(8).collect::<Vec<()>>();
             file_tasks.await;
             // All files are complete make sure we report done just in case
             progress(total_bytes, total_bytes);
@@ -422,7 +422,7 @@ impl Kuro for Game {
         }
     }
 
-    async fn preload(manifest: String, version: String, chunk_base: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+    async fn preload<F>(manifest: String, version: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() || version.is_empty() { return false; }
         progress(1000, 1000);
         true

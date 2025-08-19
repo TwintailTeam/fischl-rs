@@ -16,7 +16,7 @@ fn main() -> Result<(), ()> {
             config.default_package_filename("proto");
             config.protoc_executable(protoc);
             config.compile_protos(&["proto/SophonManifest.proto", "proto/SophonDiff.proto"], &["proto/"]).unwrap();
-        }
+        } else { panic!("No proto/ directory found!"); }
     }
     Ok(())
 }

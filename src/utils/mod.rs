@@ -49,6 +49,7 @@ pub(crate) fn get_codeberg_release(repository: String) -> Option<CodebergRelease
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn get_tukanrepo_release(repository: String) -> Option<CodebergRelease> {
     if repository.is_empty() {
         None

@@ -23,7 +23,6 @@ mod tests {
     use crate::download::{Extras};
     use crate::download::game::{Game, Hoyo, Kuro, Sophon};
     use crate::utils::{extract_archive, prettify_bytes};
-    use crate::utils::game::VoiceLocale;
 
     #[test]
     fn download_xxmi_test() {
@@ -131,7 +130,7 @@ mod tests {
     }
 
     // WARNING: Repair audio test will take A REALLY LONG time!
-    #[test]
+    /*#[test]
     fn repair_audio_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
@@ -142,7 +141,7 @@ mod tests {
         } else {
             println!("repair_audio failure!");
         }
-    }
+    }*/
 
     #[test]
     fn download_fullgame_test() {
@@ -202,11 +201,11 @@ mod tests {
     #[tokio::test]
     async fn download_fullgame_kuro_test() {
         let manifest_pgr = "https://zspms-alicdn-gamestarter.kurogame.net/pcstarter/prod/game/G143/3.1.0.0/veNkEIbQIxPpTxlZvL1M9blBd3UmcUXh/resource.json";
-        let manifest_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.3.1/axFplYInrILNAVwHsqPWvgirHzeKeBgS/resource/50004/2.3.1/indexFile.json";
+        let manifest_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.1/IYOwHBLfeAXMxVgHwGybWvvSqiDnPlbs/resource/50004/2.5.1/indexFile.json";
         let chunkurl_pgr = "https://zspms-alicdn-gamestarter.kurogame.net/pcstarter/prod/game/G143/3.1.0.0/veNkEIbQIxPpTxlZvL1M9blBd3UmcUXh/zip";
-        let chunkurl_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.3.1/axFplYInrILNAVwHsqPWvgirHzeKeBgS/zip";
+        let chunkurl_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.1/IYOwHBLfeAXMxVgHwGybWvvSqiDnPlbs/zip";
 
-        let path = "/games/kuro/wuwa_global/live/testing";
+        let path = "/games/kuro/wuwa_global/testing";
         let rep = <Game as Kuro>::download(manifest_wuwa.to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), |current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
@@ -237,8 +236,8 @@ mod tests {
     // Sophon
     #[tokio::test]
     async fn download_fullgame_hoyo_sophon_test() {
-        let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/q3h361jUEuu0/manifest_6194a90dbfdae455_f2f91f7cf5f869009f4816d8489f66ca";
-        let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/q3h361jUEuu0";
+        let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/d6lo39gA1LIA/manifest_5c3b9426a2f209d1_3934c9f0cc2b5ef1b468bad832be87bb";
+        let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/d6lo39gA1LIA";
         let path = "/games/hoyo/hk4e_global/testing";
 
         let rep = <Game as Sophon>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
@@ -255,7 +254,7 @@ mod tests {
     async fn download_diff_hoyo_sophon_test() {
         let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/DphJOTQP5dDn/manifest_68690fa573e2b399_07f4d65a4f4d42157f863d7d177efaa4";
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
-        let path = "/games/hoyo/hk4e_global/live/testing";
+        let path = "/games/hoyo/hk4e_global/testing";
 
         let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, false, |current, total| {
             println!("current: {} | total: {}", current, total)
@@ -269,9 +268,9 @@ mod tests {
 
     #[tokio::test]
     async fn repair_hoyo_sophon_test() {
-        let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/3j90WyoOpfjt/manifest_b39180b4ad2cabd3_5bd9ec245492bc76dc13c0204b43cce8";
-        let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/3j90WyoOpfjt";
-        let path = "/games/hoyo/hk4e_global/live/testing";
+        let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/d6lo39gA1LIA/manifest_5c3b9426a2f209d1_3934c9f0cc2b5ef1b468bad832be87bb";
+        let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/d6lo39gA1LIA";
+        let path = "/games/hoyo/hk4e_global/testing";
 
         let rep = <Game as Sophon>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false,|current, total| {
             println!("current: {} | total: {}", current, total)
@@ -287,7 +286,7 @@ mod tests {
     async fn download_preload_hoyo_sophon_test() {
         let manifest = "https://autopatchhk.yuanshen.com/client_app/sophon/manifests/cxhpq4g4rgg0/DphJOTQP5dDn/manifest_68690fa573e2b399_07f4d65a4f4d42157f863d7d177efaa4";
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
-        let path = "/games/hoyo/hk4e_global/live/testing";
+        let path = "/games/hoyo/hk4e_global/testing";
 
         let rep = <Game as Sophon>::preload(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
             println!("current: {} | total: {}", current, total)

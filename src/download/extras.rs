@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 use crate::download::Extras;
-use crate::utils::{get_codeberg_release, get_github_release, get_tukanrepo_release};
+use crate::utils::{get_codeberg_release, get_github_release};
 use crate::utils::downloader::Downloader;
 use crate::utils::github_structs::Asset;
 
@@ -58,10 +58,10 @@ impl Extras {
 
                 if dl.is_ok() {
                     if with_loader {
-                        let rel = get_tukanrepo_release("TTL-extras/3dmloader-Package".to_string());
+                        let rel = get_github_release("TwintailTeam/3dmloader-Package".to_string());
                         if rel.is_some() {
                             let r = rel.unwrap();
-                            let u = r.get(0).unwrap().assets.get(0).unwrap().browser_download_url.clone();
+                            let u = r.assets.get(0).unwrap().clone().browser_download_url;
                             downloader = Downloader::new(u).unwrap();
                             downloader.download(d.join("3dmloader.exe").to_path_buf(), |_, _| {}).unwrap();
                         }

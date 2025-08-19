@@ -17,7 +17,6 @@ serde = {version = "1", features = ["derive"]}
 reqwest = {version = "0.12", features = ["blocking", "json", "stream"]}
 chksum-md5 = {version = "0.1.0", features = ["async-runtime-tokio"], optional = true}
 prost = {version = "0.14", features = [], optional = true}
-async-compression = {version = "0.4", default-features = false, features = ["tokio", "zstd"], optional = true}
 tokio = {version = "1.45", features = ["macros"]}
 reqwest-middleware = "0.4"
 reqwest-retry = "0.7"
@@ -30,9 +29,11 @@ zip = {version = "4.2.0", default-features = false, features = ["deflate"], opti
 tar = {version = "0.4.44", optional = true}
 flate2 = {version = "1.1.2", default-features = false, features = ["zlib-rs"], optional = true}
 liblzma = {version = "0.4.2", features = ["static"], optional = true}
+zstd = {version = "0.13.3", optional = true}
+crossbeam-deque = {version = "0.8.6", optional = true}
 
 [features]
 compat = ["dep:wincompatlib"]
-download = ["dep:zip", "dep:tar", "dep:flate2", "dep:liblzma", "dep:chksum-md5", "dep:async-compression", "dep:prost"]
+download = ["dep:zip", "dep:tar", "dep:flate2", "dep:liblzma", "dep:zstd", "dep:chksum-md5", "dep:prost", "dep:crossbeam-deque"]
 
 default = ["download"]
