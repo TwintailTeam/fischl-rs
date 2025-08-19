@@ -731,8 +731,8 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
 
     let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
     progress_cb(processed, total_bytes);
-    for c in &chunk_task.chunks {
+    /*for c in &chunk_task.chunks {
         let chunk_path = chunks_dir.join(&c.chunk_name);
         if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
-    }
+    }*/
 }
