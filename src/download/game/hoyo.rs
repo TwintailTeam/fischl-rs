@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 use crossbeam_deque::{Injector, Steal, Worker};
 use futures_util::future::join_all;
+use futures_util::stream::FuturesUnordered;
 use prost::Message;
 use reqwest_middleware::ClientWithMiddleware;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
@@ -685,7 +686,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
     let writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
     let blocking_limiter = Arc::new(tokio::sync::Semaphore::new(100));
 
-    let mut chunk_futures = Vec::new();
+    let mut chunk_futures = FuturesUnordered::new();
     for c in chunk_task.chunks.clone() {
         let chunk_path = chunks_dir.join(&c.chunk_name);
         let client = Arc::clone(&client);
@@ -717,7 +718,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
     }
     let chunk_results = join_all(chunk_futures).await;
     for opt in chunk_results {
-        if let Some((buffer, offset)) = opt {
+        if let Ok(Some((buffer, offset))) = opt {
             let mut writer = writer.lock().await;
             writer.seek(SeekFrom::Start(offset)).await.unwrap();
             writer.write_all(&buffer).await.unwrap();
