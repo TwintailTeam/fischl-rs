@@ -721,11 +721,9 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
             let mut writer = writer.lock().await;
             writer.seek(SeekFrom::Start(offset)).await.unwrap();
             writer.write_all(&buffer).await.unwrap();
-            drop(writer);
         }
     }
     { let mut writer = writer.lock().await; writer.flush().await.unwrap(); }
-    drop(writer);
     let valid = if is_fast { fp.metadata().unwrap().len() == chunk_task.size } else { validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await };
     if !valid { eprintln!("Failed file validation: {}", chunk_task.name); }
 
