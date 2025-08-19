@@ -125,14 +125,14 @@ impl Sophon for Game {
                 let injector = Arc::new(Injector::<ManifestFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..50 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..30 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in decoded.files.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(50));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(30));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(50);
-                for i in 0..workers.len() {
+                let mut handles = Vec::with_capacity(30);
+                for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
                     let injector = injector.clone();
@@ -147,7 +147,6 @@ impl Sophon for Game {
                     let client = client.clone();
 
                     let handle = tokio::task::spawn(async move {
-                        println!("worker: {} started!", i);
                         loop {
                             let job = local_worker.pop().or_else(|| injector.steal().success()).or_else(|| {
                                     for s in stealers.iter() { if let Steal::Success(t) = s.steal() { return Some(t); } }
@@ -169,7 +168,6 @@ impl Sophon for Game {
                                 }
                             }); // end task
                         }
-                        println!("worker: {} exiting", i);
                     });
                     handles.push(handle);
                 }
@@ -477,7 +475,7 @@ impl Sophon for Game {
 
                 // Spawn worker tasks
                 let mut handles = Vec::with_capacity(50);
-                for i in 0..workers.len() {
+                for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
                     let injector = injector.clone();
@@ -492,7 +490,6 @@ impl Sophon for Game {
                     let client = client.clone();
 
                     let handle = tokio::task::spawn(async move {
-                        println!("worker: {} started!", i);
                         loop {
                             let job = local_worker.pop().or_else(|| injector.steal().success()).or_else(|| {
                                 for s in stealers.iter() { if let Steal::Success(t) = s.steal() { return Some(t); } }
@@ -514,7 +511,6 @@ impl Sophon for Game {
                                 }
                             }); // end task
                         }
-                        println!("worker: {} exiting", i);
                     });
                     handles.push(handle);
                 }
@@ -580,7 +576,7 @@ impl Sophon for Game {
                 // Spawn worker tasks
                 for (i, task) in decoded.files.into_iter().enumerate() { workers[i % workers.len()].push(task); }
                 let mut handles = Vec::with_capacity(10);
-                for (i, local_worker) in workers.into_iter().enumerate() {
+                for (_i, local_worker) in workers.into_iter().enumerate() {
                     let client = client.clone();
                     let chunk_base = chunk_base.clone();
                     let version = version.clone();
@@ -590,7 +586,6 @@ impl Sophon for Game {
                     let stealers = stealers.clone();
 
                     let handle = tokio::task::spawn(async move {
-                        println!("worker: {} started!", i);
                         loop {
                             if let Some(chunk_task) = local_worker.pop() {
                                 let filtered: Vec<(String, PatchChunk)> = chunk_task.chunks.clone().into_iter().filter(|(v, _chunk)| version.as_str() == v.as_str()).collect();
@@ -657,7 +652,6 @@ impl Sophon for Game {
                             }
                             break;
                         }
-                        println!("worker: {} exiting", i);
                     });
                     handles.push(handle);
                 }
