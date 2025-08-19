@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 use crossbeam_deque::{Injector, Steal, Worker};
+use futures_util::future::join_all;
 use futures_util::stream::FuturesUnordered;
-use futures_util::StreamExt;
 use prost::Message;
 use reqwest_middleware::ClientWithMiddleware;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
@@ -716,14 +716,23 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
             None
         });
     }
-    while let Some(opt) = chunk_futures.next().await {
-        if let Some((buffer, offset)) = opt {
+    let chunk_results = join_all(chunk_futures).await;
+    for opt in chunk_results {
+        if let Ok(Some((buffer, offset))) = opt {
             let mut writer = writer.lock().await;
             writer.seek(SeekFrom::Start(offset)).await.unwrap();
             writer.write_all(&buffer).await.unwrap();
             drop(writer);
         }
     }
+    /*while let Some(opt) = chunk_futures.next().await {
+        if let Some((buffer, offset)) = opt {
+            let mut writer = writer.lock().await;
+            writer.seek(SeekFrom::Start(offset)).await.unwrap();
+            writer.write_all(&buffer).await.unwrap();
+            drop(writer);
+        }
+    }*/
     { let mut writer = writer.lock().await; writer.flush().await.unwrap(); }
     drop(writer);
     let valid = if is_fast { fp.metadata().unwrap().len() == chunk_task.size } else { validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await };
