@@ -163,7 +163,7 @@ impl Sophon for Game {
                                 let chunk_base = chunk_base.clone();
                                 let client = client.clone();
                                 async move {
-                                    process_file_chunks(chunk_task.clone(), chunks_dir, staging_dir.clone(), chunk_base, client, progress_counter.clone(), progress_cb.clone(), total_bytes, false).await;
+                                    process_file_chunks(chunk_task.clone(), chunks_dir.clone(), staging_dir.clone(), chunk_base, client, progress_counter.clone(), progress_cb.clone(), total_bytes, false).await;
 
                                     let fp = staging_dir.join(chunk_task.clone().name);
                                     let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
@@ -171,6 +171,10 @@ impl Sophon for Game {
 
                                     let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                     progress_cb(processed, total_bytes);
+                                    for c in &chunk_task.chunks {
+                                        let chunk_path = chunks_dir.join(&c.chunk_name);
+                                        if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                    }
                                     drop(permit);
                                 }
                             }); // end task
@@ -513,7 +517,7 @@ impl Sophon for Game {
                                 let chunk_base = chunk_base.clone();
                                 let client = client.clone();
                                 async move {
-                                    process_file_chunks(chunk_task.clone(), chunks_dir, mainp.clone(), chunk_base, client, progress_counter.clone(), progress_cb.clone(), total_bytes, is_fast).await;
+                                    process_file_chunks(chunk_task.clone(), chunks_dir.clone(), mainp.clone(), chunk_base, client, progress_counter.clone(), progress_cb.clone(), total_bytes, is_fast).await;
 
                                     let fp = mainp.join(chunk_task.clone().name);
                                     let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
@@ -521,6 +525,10 @@ impl Sophon for Game {
 
                                     let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                     progress_cb(processed, total_bytes);
+                                    for c in &chunk_task.chunks {
+                                        let chunk_path = chunks_dir.join(&c.chunk_name);
+                                        if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                    }
                                     drop(permit);
                                 }
                             }); // end task
@@ -698,7 +706,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
     let file = tokio::fs::OpenOptions::new().create(true).write(true).open(&fp).await.unwrap();
     file.set_len(chunk_task.size).await.unwrap();
     let writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
-    let blocking_limiter = Arc::new(tokio::sync::Semaphore::new(100));
+    let blocking_limiter = Arc::new(tokio::sync::Semaphore::new(200));
 
     let mut chunk_futures = FuturesUnordered::new();
     for c in chunk_task.chunks.clone() {
@@ -738,13 +746,4 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
         }
     }
     { let mut writer = writer.lock().await; writer.flush().await.unwrap(); }
-    /*let valid = if is_fast { fp.metadata().unwrap().len() == chunk_task.size } else { validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await };
-    if !valid { eprintln!("Failed file validation: {}", chunk_task.name); }
-
-    let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
-    progress_cb(processed, total_bytes);*/
-    /*for c in &chunk_task.chunks {
-        let chunk_path = chunks_dir.join(&c.chunk_name);
-        if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
-    }*/
 }
