@@ -125,13 +125,13 @@ impl Sophon for Game {
                 let injector = Arc::new(Injector::<ManifestFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..30 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..10 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in decoded.files.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(30));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(10));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(30);
+                let mut handles = Vec::with_capacity(10);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -163,7 +163,14 @@ impl Sophon for Game {
                                 let chunk_base = chunk_base.clone();
                                 let client = client.clone();
                                 async move {
-                                    process_file_chunks(chunk_task, chunks_dir, staging_dir, chunk_base, client, progress_counter, progress_cb, total_bytes, false).await;
+                                    process_file_chunks(chunk_task.clone(), chunks_dir, staging_dir.clone(), chunk_base, client, progress_counter.clone(), progress_cb.clone(), total_bytes, false).await;
+
+                                    let fp = staging_dir.join(chunk_task.clone().name);
+                                    let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+                                    if !valid { eprintln!("Failed file validation: {}", chunk_task.name); }
+
+                                    let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                    progress_cb(processed, total_bytes);
                                     drop(permit);
                                 }
                             }); // end task
@@ -468,13 +475,13 @@ impl Sophon for Game {
                 let injector = Arc::new(Injector::<ManifestFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..50 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..10 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in decoded.files.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(50));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(10));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(50);
+                let mut handles = Vec::with_capacity(10);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -506,7 +513,14 @@ impl Sophon for Game {
                                 let chunk_base = chunk_base.clone();
                                 let client = client.clone();
                                 async move {
-                                    process_file_chunks(chunk_task, chunks_dir, mainp, chunk_base, client, progress_counter, progress_cb, total_bytes, is_fast).await;
+                                    process_file_chunks(chunk_task.clone(), chunks_dir, mainp.clone(), chunk_base, client, progress_counter.clone(), progress_cb.clone(), total_bytes, is_fast).await;
+
+                                    let fp = mainp.join(chunk_task.clone().name);
+                                    let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+                                    if !valid { eprintln!("Failed file validation: {}", chunk_task.name); }
+
+                                    let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                    progress_cb(processed, total_bytes);
                                     drop(permit);
                                 }
                             }); // end task
@@ -569,13 +583,13 @@ impl Sophon for Game {
                 let progress_counter = Arc::new(AtomicU64::new(0));
                 let progress = Arc::new(progress);
 
-                let workers = std::iter::repeat_with(Worker::<PatchFile>::new_fifo).take(10).collect::<Vec<_>>();
+                let workers = std::iter::repeat_with(Worker::<PatchFile>::new_fifo).take(8).collect::<Vec<_>>();
                 let stealers = workers.iter().map(Worker::stealer).collect::<Vec<_>>();
                 let stealers = Arc::new(stealers);
 
                 // Spawn worker tasks
                 for (i, task) in decoded.files.into_iter().enumerate() { workers[i % workers.len()].push(task); }
-                let mut handles = Vec::with_capacity(10);
+                let mut handles = Vec::with_capacity(8);
                 for (_i, local_worker) in workers.into_iter().enumerate() {
                     let client = client.clone();
                     let chunk_base = chunk_base.clone();
@@ -724,11 +738,11 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
         }
     }
     { let mut writer = writer.lock().await; writer.flush().await.unwrap(); }
-    let valid = if is_fast { fp.metadata().unwrap().len() == chunk_task.size } else { validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await };
+    /*let valid = if is_fast { fp.metadata().unwrap().len() == chunk_task.size } else { validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await };
     if !valid { eprintln!("Failed file validation: {}", chunk_task.name); }
 
     let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
-    progress_cb(processed, total_bytes);
+    progress_cb(processed, total_bytes);*/
     /*for c in &chunk_task.chunks {
         let chunk_path = chunks_dir.join(&c.chunk_name);
         if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
