@@ -169,18 +169,22 @@ impl Sophon for Game {
                                     let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                     if !valid {
                                         eprintln!("Failed file validation... RETRYING: {}", chunk_task.name);
+                                        if fp.exists() {
+                                            if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before retry: {}: {}", fp.display(), e); }
+                                        }
                                         process_file_chunks(chunk_task.clone(), chunks_dir.clone(), staging_dir.clone(), chunk_base.clone(), client.clone(), progress_counter.clone(), progress_cb.clone(), total_bytes, false).await;
                                         let revalid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
-                                        if !revalid { eprintln!("Failed file validation (retry): {}", chunk_task.name); }
+                                        if !revalid { eprintln!("Failed file validation (retry): {}", chunk_task.name); } else {
+                                            let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                            progress_cb(processed, total_bytes);
+                                        }
+                                    } else {
                                         let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         progress_cb(processed, total_bytes);
-                                    }
-
-                                    let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
-                                    progress_cb(processed, total_bytes);
-                                    for c in &chunk_task.chunks {
-                                        let chunk_path = chunks_dir.join(&c.chunk_name);
-                                        if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                        for c in &chunk_task.chunks {
+                                            let chunk_path = chunks_dir.join(&c.chunk_name);
+                                            if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                        }
                                     }
                                     drop(permit);
                                 }
@@ -530,18 +534,22 @@ impl Sophon for Game {
                                     let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                     if !valid {
                                         eprintln!("Failed file validation... RETRYING: {}", chunk_task.name);
+                                        if fp.exists() {
+                                            if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before retry: {}: {}", fp.display(), e); }
+                                        }
                                         process_file_chunks(chunk_task.clone(), chunks_dir.clone(), mainp.clone(), chunk_base.clone(), client.clone(), progress_counter.clone(), progress_cb.clone(), total_bytes, is_fast).await;
                                         let revalid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
-                                        if !revalid { eprintln!("Failed file validation (retry): {}", chunk_task.name); }
+                                        if !revalid { eprintln!("Failed file validation (retry): {}", chunk_task.name); } else {
+                                            let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                            progress_cb(processed, total_bytes);
+                                        }
+                                    } else {
                                         let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         progress_cb(processed, total_bytes);
-                                    }
-
-                                    let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
-                                    progress_cb(processed, total_bytes);
-                                    for c in &chunk_task.chunks {
-                                        let chunk_path = chunks_dir.join(&c.chunk_name);
-                                        if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                        for c in &chunk_task.chunks {
+                                            let chunk_path = chunks_dir.join(&c.chunk_name);
+                                            if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                        }
                                     }
                                     drop(permit);
                                 }
