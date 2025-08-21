@@ -169,7 +169,7 @@ impl Sophon for Game {
                                     let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                     if !valid {
                                         eprintln!("Failed file validation... RETRYING: {}", chunk_task.name);
-                                        tokio::fs::remove_file(fp.as_path()).await.unwrap();
+                                        if fp.exists() { tokio::fs::remove_file(fp.as_path()).await.unwrap(); }
                                         process_file_chunks(chunk_task.clone(), chunks_dir.clone(), staging_dir.clone(), chunk_base.clone(), client.clone(), progress_counter.clone(), progress_cb.clone(), total_bytes, false).await;
                                         let revalid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                         if !revalid { eprintln!("Failed file validation (retry): {}", chunk_task.name); }
@@ -531,7 +531,7 @@ impl Sophon for Game {
                                     let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                     if !valid {
                                         eprintln!("Failed file validation... RETRYING: {}", chunk_task.name);
-                                        tokio::fs::remove_file(fp.as_path()).await.unwrap();
+                                        if fp.exists() { tokio::fs::remove_file(fp.as_path()).await.unwrap(); }
                                         process_file_chunks(chunk_task.clone(), chunks_dir.clone(), mainp.clone(), chunk_base.clone(), client.clone(), progress_counter.clone(), progress_cb.clone(), total_bytes, is_fast).await;
                                         let revalid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                         if !revalid { eprintln!("Failed file validation (retry): {}", chunk_task.name); }
