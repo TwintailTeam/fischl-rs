@@ -125,13 +125,13 @@ impl Sophon for Game {
                 let injector = Arc::new(Injector::<ManifestFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..10 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..8 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in decoded.files.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(10));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(10);
+                let mut handles = Vec::with_capacity(8);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -169,12 +169,19 @@ impl Sophon for Game {
                                     let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                     if !valid {
                                         eprintln!("Failed file validation... RETRYING: {}", chunk_task.name);
-                                        if fp.exists() {
-                                            if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before retry: {}: {}", fp.display(), e); }
-                                        }
+                                        if fp.exists() { if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before retry: {}: {}", fp.display(), e); } }
                                         process_file_chunks(chunk_task.clone(), chunks_dir.clone(), staging_dir.clone(), chunk_base.clone(), client.clone(), progress_counter.clone(), progress_cb.clone(), total_bytes, false).await;
                                         let revalid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
-                                        if !revalid { eprintln!("Failed file validation (retry): {}", chunk_task.name); } else {
+                                        if !revalid {
+                                            eprintln!("Failed file validation (retry): {}", chunk_task.name);
+                                            if fp.exists() { if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before re-retry: {}: {}", fp.display(), e); } }
+                                            process_file_chunks(chunk_task.clone(), chunks_dir.clone(), staging_dir.clone(), chunk_base.clone(), client.clone(), progress_counter.clone(), progress_cb.clone(), total_bytes, false).await;
+                                            let revalid2 = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+                                            if !revalid2 { eprintln!("Failed file validation (RE-retry): {}", chunk_task.name); } else {
+                                                let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                                progress_cb(processed, total_bytes);
+                                            }
+                                        } else {
                                             let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                             progress_cb(processed, total_bytes);
                                         }
@@ -490,13 +497,13 @@ impl Sophon for Game {
                 let injector = Arc::new(Injector::<ManifestFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..10 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..8 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in decoded.files.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(10));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(10);
+                let mut handles = Vec::with_capacity(8);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -534,12 +541,19 @@ impl Sophon for Game {
                                     let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                     if !valid {
                                         eprintln!("Failed file validation... RETRYING: {}", chunk_task.name);
-                                        if fp.exists() {
-                                            if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before retry: {}: {}", fp.display(), e); }
-                                        }
+                                        if fp.exists() { if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before retry: {}: {}", fp.display(), e); } }
                                         process_file_chunks(chunk_task.clone(), chunks_dir.clone(), mainp.clone(), chunk_base.clone(), client.clone(), progress_counter.clone(), progress_cb.clone(), total_bytes, is_fast).await;
                                         let revalid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
-                                        if !revalid { eprintln!("Failed file validation (retry): {}", chunk_task.name); } else {
+                                        if !revalid {
+                                            eprintln!("Failed file validation (retry): {}", chunk_task.name);
+                                            if fp.exists() { if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before re-retry: {}: {}", fp.display(), e); } }
+                                            process_file_chunks(chunk_task.clone(), chunks_dir.clone(), mainp.clone(), chunk_base.clone(), client.clone(), progress_counter.clone(), progress_cb.clone(), total_bytes, is_fast).await;
+                                            let revalid2 = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+                                            if !revalid2 { eprintln!("Failed file validation (RE-retry): {}", chunk_task.name); } else {
+                                                let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                                progress_cb(processed, total_bytes);
+                                            }
+                                        } else {
                                             let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                             progress_cb(processed, total_bytes);
                                         }
@@ -725,7 +739,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
     let file = tokio::fs::OpenOptions::new().create(true).write(true).open(&fp).await.unwrap();
     file.set_len(chunk_task.size).await.unwrap();
     let writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
-    let blocking_limiter = Arc::new(tokio::sync::Semaphore::new(200));
+    let blocking_limiter = Arc::new(tokio::sync::Semaphore::new(300));
 
     let mut chunk_futures = FuturesUnordered::new();
     for c in chunk_task.chunks.clone() {
