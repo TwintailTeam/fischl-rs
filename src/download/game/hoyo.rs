@@ -790,8 +790,12 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
     while let Some(opt) = chunk_futures.next().await {
         if let Some((buffer, offset)) = opt {
             let mut writer = writer.lock().await;
-            writer.seek(SeekFrom::Start(offset)).await.unwrap();
-            writer.write_all(&buffer).await.unwrap();
+            if offset == 0 {
+                writer.write_all(&buffer).await.unwrap();
+            } else {
+                writer.seek(SeekFrom::Start(offset)).await.unwrap();
+                writer.write_all(&buffer).await.unwrap();
+            }
         }
     }
     { let mut writer = writer.lock().await; writer.flush().await.unwrap(); }
