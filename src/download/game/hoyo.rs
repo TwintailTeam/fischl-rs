@@ -180,10 +180,18 @@ impl Sophon for Game {
                                             if !revalid2 { eprintln!("Failed file validation (RE-retry): {}", chunk_task.name); } else {
                                                 let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                                 progress_cb(processed, total_bytes);
+                                                for c in &chunk_task.chunks {
+                                                    let chunk_path = chunks_dir.join(&c.chunk_name);
+                                                    if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                                }
                                             }
                                         } else {
                                             let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                             progress_cb(processed, total_bytes);
+                                            for c in &chunk_task.chunks {
+                                                let chunk_path = chunks_dir.join(&c.chunk_name);
+                                                if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                            }
                                         }
                                     } else {
                                         let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
@@ -552,10 +560,18 @@ impl Sophon for Game {
                                             if !revalid2 { eprintln!("Failed file validation (RE-retry): {}", chunk_task.name); } else {
                                                 let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                                 progress_cb(processed, total_bytes);
+                                                for c in &chunk_task.chunks {
+                                                    let chunk_path = chunks_dir.join(&c.chunk_name);
+                                                    if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                                }
                                             }
                                         } else {
                                             let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                             progress_cb(processed, total_bytes);
+                                            for c in &chunk_task.chunks {
+                                                let chunk_path = chunks_dir.join(&c.chunk_name);
+                                                if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                                            }
                                         }
                                     } else {
                                         let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
@@ -739,7 +755,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
     let file = tokio::fs::OpenOptions::new().create(true).write(true).open(&fp).await.unwrap();
     file.set_len(chunk_task.size).await.unwrap();
     let writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
-    let blocking_limiter = Arc::new(tokio::sync::Semaphore::new(300));
+    let blocking_limiter = Arc::new(tokio::sync::Semaphore::new(400));
 
     let mut chunk_futures = FuturesUnordered::new();
     for c in chunk_task.chunks.clone() {
