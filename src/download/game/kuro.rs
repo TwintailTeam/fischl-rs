@@ -11,25 +11,136 @@ impl Kuro for Game {
     async fn download<F>(manifest: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
 
-        let p = Path::new(game_path.as_str()).to_path_buf().join("downloading");
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let p = Path::new(game_path.as_str()).to_path_buf();
+        let dlp = p.join("downloading");
+        let dlr = p.join("repairing");
+        let dlptch = dlp.join("patching");
 
+        if dlr.exists() { tokio::fs::remove_dir_all(&dlr).await.unwrap(); }
+        if dlptch.exists() { tokio::fs::remove_dir_all(&dlptch).await.unwrap(); }
+
+        let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
-        let dll = dl.download(p.clone().join("manifest.json"), |_, _| {}).await;
+        let dll = dl.download(dlp.clone().join("manifest.json"), |_, _| {}).await;
 
         if dll.is_ok() {
-            let mut f = tokio::fs::File::open(p.join("manifest.json").as_path()).await.unwrap();
+            let mut f = tokio::fs::File::open(dlp.join("manifest.json").as_path()).await.unwrap();
             let mut reader = String::new();
             f.read_to_string(&mut reader).await.unwrap();
             let files: KuroIndex = serde_json::from_str(&reader).unwrap();
 
-            let staging = p.join("staging");
+            let staging = dlp.join("staging");
             if !staging.exists() { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
 
             let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
             let progress_counter = Arc::new(AtomicU64::new(0));
             let progress = Arc::new(progress);
 
+            // Start of download code
+            /*let injector = Arc::new(Injector::<KuroResource>::new());
+            let mut workers = Vec::new();
+            let mut stealers_list = Vec::new();
+            for _ in 0..8 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            let stealers = Arc::new(stealers_list);
+            for task in files.resource.into_iter() { injector.push(task); }
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
+
+            // Spawn worker tasks
+            let mut handles = Vec::with_capacity(8);
+            for _i in 0..workers.len() {
+                let local_worker = workers.pop().unwrap();
+                let stealers = stealers.clone();
+                let injector = injector.clone();
+                let file_sem = file_sem.clone();
+
+                let progress_counter = progress_counter.clone();
+                let progress_cb = progress.clone();
+                let chunk_base = chunk_base.clone();
+                let spc = staging.clone();
+                let client = client.clone();
+
+                let mut retry_tasks = Vec::new();
+                let handle = tokio::task::spawn(async move {
+                    loop {
+                        let job = local_worker.pop().or_else(|| injector.steal().success()).or_else(|| {
+                            for s in stealers.iter() { if let Steal::Success(t) = s.steal() { return Some(t); } }
+                            None
+                        });
+                        let Some(ff) = job else { break; };
+                        let permit = file_sem.clone().acquire_owned().await.unwrap();
+
+                        let ct = tokio::spawn({
+                            let progress_counter = progress_counter.clone();
+                            let progress_cb = progress_cb.clone();
+                            let chunk_base = chunk_base.clone();
+                            let spc = spc.clone();
+                            let client = client.clone();
+                            async move {
+                                let filen = ff.dest.strip_prefix("/").unwrap_or(&ff.dest);
+                                let output_path = spc.join(filen);
+                                let valid = validate_checksum(output_path.as_path(), ff.clone().md5.to_ascii_lowercase()).await;
+
+                                if output_path.exists() && valid {
+                                    progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                    let processed = progress_counter.load(Ordering::SeqCst);
+                                    progress_cb(processed, total_bytes);
+                                    return;
+                                } else {
+                                    if let Some(parent) = output_path.parent() { tokio::fs::create_dir_all(parent).await.unwrap(); }
+                                }
+
+                                let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{filen}").to_string()).await.unwrap();
+                                let dlf = dl.download(output_path.clone(), |_, _| {}).await;
+
+                                if dlf.is_ok() && output_path.exists() {
+                                    let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                                    if r1 {
+                                        progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                        let processed = progress_counter.load(Ordering::SeqCst);
+                                        progress_cb(processed, total_bytes);
+                                    } else {
+                                        // Retry to download if we fail
+                                        let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{filen}").to_string()).await.unwrap();
+                                        let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
+                                        if dlf1.is_ok() {
+                                            let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                                            if r2 {
+                                                progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                                let processed = progress_counter.load(Ordering::SeqCst);
+                                                progress_cb(processed, total_bytes);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                                    if r1 {
+                                        progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                        let processed = progress_counter.load(Ordering::SeqCst);
+                                        progress_cb(processed, total_bytes);
+                                    } else {
+                                        // Retry to download if we fail
+                                        let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{filen}").to_string()).await.unwrap();
+                                        let dlf1 = dl.download(output_path.clone(), |_, _| {}).await;
+                                        if dlf1.is_ok() {
+                                            let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
+                                            if r2 {
+                                                progress_counter.fetch_add(ff.size, Ordering::SeqCst);
+                                                let processed = progress_counter.load(Ordering::SeqCst);
+                                                progress_cb(processed, total_bytes);
+                                            }
+                                        }
+                                    }
+                                }
+                                drop(permit);
+                            }
+                        }); // end task
+                        retry_tasks.push(ct);
+                    }
+                    for t in retry_tasks { let _ = t.await; }
+                });
+                handles.push(handle);
+            }
+            for handle in handles { let _ = handle.await; }*/
             let file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
                 let chunk_base = chunk_base.clone();
                 let staging = staging.clone();
@@ -89,7 +200,7 @@ impl Kuro for Game {
             progress(total_bytes, total_bytes);
             // Move from "staging" to "game_path" and delete "downloading" directory
             let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
-            if moved.is_ok() { tokio::fs::remove_dir_all(p.as_path()).await.unwrap(); }
+            if moved.is_ok() { tokio::fs::remove_dir_all(dlp.as_path()).await.unwrap(); }
             true
         } else {
             false
@@ -101,8 +212,13 @@ impl Kuro for Game {
 
         let mainp = Path::new(game_path.as_str());
         let p = mainp.join("patching");
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let dlp = mainp.join("downloading");
+        let dlr = mainp.join("repairing");
 
+        if dlr.exists() { tokio::fs::remove_dir_all(&dlr).await.unwrap(); }
+        if dlp.exists() { tokio::fs::remove_dir_all(&dlp).await.unwrap(); }
+
+        let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
         let dll = dl.download(p.clone().join("manifest.json"), |_, _| {}).await;
 
@@ -243,8 +359,6 @@ impl Kuro for Game {
                         let output_path = spc.join(filen);
                         let valid = validate_checksum(output_path.as_path(), ff.clone().md5.to_ascii_lowercase()).await;
 
-                        // File exists in "staging" directory and checksum is valid skip it
-                        // NOTE: This in theory will never be needed, but it is implemented to prevent redownload of already valid files as a form of "catching up"
                         if output_path.exists() && valid {
                             progress_counter.fetch_add(ff.size, Ordering::SeqCst);
                             let processed = progress_counter.load(Ordering::SeqCst);
@@ -308,8 +422,13 @@ impl Kuro for Game {
 
         let mainp = Path::new(game_path.as_str());
         let p = mainp.to_path_buf().join("repairing");
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let dlptch = mainp.join("patching");
+        let dlp = mainp.join("downloading");
 
+        if dlptch.exists() { tokio::fs::remove_dir_all(&dlptch).await.unwrap(); }
+        if dlp.exists() { tokio::fs::remove_dir_all(&dlp).await.unwrap(); }
+
+        let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
         let dll = dl.download(p.clone().join("manifest.json"), |_, _| {}).await;
 

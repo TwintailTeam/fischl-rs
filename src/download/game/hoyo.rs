@@ -726,12 +726,10 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
 async fn validate_file<F>(chunk_task: ManifestFile, chunk_base: String, chunks_dir: PathBuf, staging_dir: PathBuf, fp: PathBuf, client: Arc<ClientWithMiddleware>, progress_counter: Arc<AtomicU64>, progress_cb: Arc<F>, total_bytes: u64, is_fast: bool) where F: Fn(u64, u64) + Send + Sync + 'static {
     let valid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
     if !valid {
-        eprintln!("Failed file validation... RETRYING: {}", chunk_task.name);
         if fp.exists() { if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before retry: {}: {}", fp.display(), e); } }
         process_file_chunks(chunk_task.clone(), chunks_dir.clone(), staging_dir.clone(), chunk_base.clone(), client.clone(), is_fast).await;
         let revalid = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
         if !revalid {
-            eprintln!("Failed file validation (retry): {}", chunk_task.name);
             if fp.exists() { if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before re-retry: {}: {}", fp.display(), e); } }
             process_file_chunks(chunk_task.clone(), chunks_dir.clone(), staging_dir.clone(), chunk_base.clone(), client.clone(), is_fast).await;
             let revalid2 = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
