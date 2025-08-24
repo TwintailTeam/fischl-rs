@@ -10,10 +10,10 @@ impl Extras {
     pub fn download_fps_unlock(repository: String, dest: String) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
-            let rel = get_codeberg_release(repository.clone());
+            let rel = get_github_release(repository.clone());
             if rel.is_some() {
                 let r = rel.unwrap();
-                let u = r.get(0).unwrap().assets.get(0).unwrap().browser_download_url.clone();
+                let u = r.assets.get(0).unwrap().browser_download_url.clone();
                 let mut downloader = Downloader::new(u).unwrap();
                 let dl = downloader.download(d.join("fpsunlock.exe").to_path_buf(), |_, _| {});
                 dl.is_ok()
