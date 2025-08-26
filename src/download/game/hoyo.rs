@@ -684,12 +684,14 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
     let file = tokio::fs::OpenOptions::new().create(true).write(true).open(&fp).await.unwrap();
     file.set_len(chunk_task.size).await.unwrap();
     let writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
+    let csem = Arc::new(tokio::sync::Semaphore::new(120));
 
     let mut chunk_futures = FuturesUnordered::new();
     for c in chunk_task.chunks.clone() {
         let chunk_path = chunks_dir.join(&c.chunk_name);
         let client = Arc::clone(&client);
         let chunk_base = chunk_base.clone();
+        let sem = csem.clone();
 
         chunk_futures.push(async move {
             let mut dl = AsyncDownloader::new(client, format!("{}/{}", chunk_base, c.chunk_name)).await.unwrap();
@@ -698,14 +700,18 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
             if dl_result.is_ok() {
                 let valid = validate_checksum(chunk_path.as_path(), c.chunk_md5.to_ascii_lowercase()).await;
                 if valid {
+                    let p = sem.acquire_owned().await.unwrap();
                     let buffer = tokio::task::spawn_blocking(move || {
                         let file = fs::File::open(&chunk_path).unwrap();
                         let mut reader = BufReader::with_capacity(512 * 1024, file);
                         let mut decoder = zstd::Decoder::new(&mut reader).unwrap();
                         let mut buf = Vec::with_capacity(c.chunk_decompressed_size as usize);
                         copy(&mut decoder, &mut buf).unwrap();
+                        drop(decoder);
+                        drop(reader);
                         buf
                     }).await.unwrap();
+                    drop(p);
                     return Some((buffer, c.chunk_on_file_offset));
                 }
             }
@@ -733,7 +739,19 @@ async fn validate_file<F>(chunk_task: ManifestFile, chunk_base: String, chunks_d
             if fp.exists() { if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before re-retry: {}: {}", fp.display(), e); } }
             process_file_chunks(chunk_task.clone(), chunks_dir.clone(), staging_dir.clone(), chunk_base.clone(), client.clone(), is_fast).await;
             let revalid2 = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
-            if !revalid2 { eprintln!("Failed file validation (RE-retry): {}", chunk_task.name); } else {
+            if !revalid2 {
+                if fp.exists() { if let Err(e) = tokio::fs::remove_file(&fp).await { eprintln!("Failed to delete incomplete file before re-re-retry: {}: {}", fp.display(), e); } }
+                process_file_chunks(chunk_task.clone(), chunks_dir.clone(), staging_dir.clone(), chunk_base.clone(), client.clone(), is_fast).await;
+                let revalid3 = validate_checksum(fp.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+                if !revalid3 { eprintln!("Failed to validate file after 3 retries! Please run game repair after finishing. Affected file: {}", chunk_task.name.clone()); } else {
+                    let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                    progress_cb(processed, total_bytes);
+                    for c in &chunk_task.chunks {
+                        let chunk_path = chunks_dir.join(&c.chunk_name);
+                        if chunk_path.exists() { if let Err(e) = tokio::fs::remove_file(&chunk_path).await { eprintln!("Failed to delete chunk file {}: {}", chunk_path.display(), e); } }
+                    }
+                }
+            } else {
                 let processed = progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                 progress_cb(processed, total_bytes);
                 for c in &chunk_task.chunks {
