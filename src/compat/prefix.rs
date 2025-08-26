@@ -9,7 +9,7 @@ use crate::utils::{extract_archive, get_full_extension};
 
 #[cfg(feature = "compat")]
 impl Compat {
-    pub fn download_runner(url: String, dest: String, extract: bool) -> bool {
+    pub fn download_runner(url: String, dest: String, extract: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
             let mut downloader = Downloader::new(url).unwrap();
@@ -17,7 +17,7 @@ impl Compat {
             let ext = get_full_extension(fin).unwrap();
             let name = String::from("runner.").add(ext);
             let dp = d.to_path_buf().join(name.as_str());
-            let dl = downloader.download(dp.clone(), |_, _| {});
+            let dl = downloader.download(dp.clone(), progress);
             if dl.is_ok() {
                 if extract {
                     let r = extract_archive("".to_string(), dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true);

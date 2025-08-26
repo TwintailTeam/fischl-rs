@@ -27,7 +27,9 @@ mod tests {
     #[test]
     fn download_xxmi_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/xxmi/testing";
-        let success = Extras::download_xxmi(String::from("SpectrumQT/XXMI-Libs-Package"), dest.to_string(), true);
+        let success = Extras::download_xxmi(String::from("SpectrumQT/XXMI-Libs-Package"), dest.to_string(), true, move |current, total| {
+            println!("current: {}, total: {}", current, total);
+        });
         if success {
             let finaldest = Path::new(&dest).join("xxmi.zip");
             let extract = extract_archive("".to_owned(), finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
@@ -89,7 +91,9 @@ mod tests {
     fn download_fpsunlock_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/fps_unlock/testing";
 
-        let success = Extras::download_fps_unlock(String::from("mkrsym1/fpsunlock"), dest.to_string());
+        let success = Extras::download_fps_unlock(String::from("TwintailTeam/KeqingUnlock"), dest.to_string(), move |current, total| {
+            println!("current: {}, total: {}", current, total);
+        });
         if success {
             println!("fps unlock downloaded!")
         } else {
@@ -101,7 +105,9 @@ mod tests {
     fn download_jadeite_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/jadeite/testing";
 
-        let success = Extras::download_jadeite(String::from("mkrsym1/jadeite"), dest.to_string());
+        let success = Extras::download_jadeite(String::from("mkrsym1/jadeite"), dest.to_string(), move |current, total| {
+            println!("current: {}, total: {}", current, total);
+        });
         if success {
             let finaldest = Path::new(dest).join("jadeite.zip");
             let extract = extract_archive("".to_owned(), finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
@@ -112,7 +118,7 @@ mod tests {
                 println!("Failed to extract!");
             }
         } else {
-            println!("failed to download dxvk");
+            println!("failed to download jadeite");
         }
     }
 

@@ -7,7 +7,7 @@ use crate::utils::github_structs::Asset;
 
 #[cfg(feature = "download")]
 impl Extras {
-    pub fn download_fps_unlock(repository: String, dest: String) -> bool {
+    pub fn download_fps_unlock(repository: String, dest: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
             let rel = get_github_release(repository.clone());
@@ -15,7 +15,7 @@ impl Extras {
                 let r = rel.unwrap();
                 let u = r.assets.get(0).unwrap().browser_download_url.clone();
                 let mut downloader = Downloader::new(u).unwrap();
-                let dl = downloader.download(d.join("fpsunlock.exe").to_path_buf(), |_, _| {});
+                let dl = downloader.download(d.join("fpsunlock.exe").to_path_buf(), progress);
                 dl.is_ok()
             } else {
                 false
@@ -26,7 +26,7 @@ impl Extras {
         }
     }
 
-    pub fn download_jadeite(repository: String, dest: String) -> bool {
+    pub fn download_jadeite(repository: String, dest: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
             let rel = get_codeberg_release(repository.clone());
@@ -34,7 +34,7 @@ impl Extras {
                 let r = rel.unwrap();
                 let u = r.get(0).unwrap().assets.get(0).unwrap().browser_download_url.clone();
                 let mut downloader = Downloader::new(u).unwrap();
-                let dl = downloader.download(d.join("jadeite.zip").to_path_buf(), |_, _| {});
+                let dl = downloader.download(d.join("jadeite.zip").to_path_buf(), progress);
                 dl.is_ok()
             } else {
                 false
@@ -45,7 +45,7 @@ impl Extras {
         }
     }
 
-    pub fn download_xxmi(repository: String, dest: String, with_loader: bool) -> bool {
+    pub fn download_xxmi(repository: String, dest: String, with_loader: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
             let rel = get_github_release(repository.clone());
@@ -54,7 +54,7 @@ impl Extras {
                 let filtered = r.assets.into_iter().filter(|a| a.name.to_ascii_lowercase().contains("xxmi")).collect::<Vec<Asset>>();
                 let u = filtered.get(0).unwrap().clone().browser_download_url.clone();
                 let mut downloader = Downloader::new(u).unwrap();
-                let dl = downloader.download(d.join("xxmi.zip").to_path_buf(), |_, _| {});
+                let dl = downloader.download(d.join("xxmi.zip").to_path_buf(), progress);
 
                 if dl.is_ok() {
                     if with_loader {
