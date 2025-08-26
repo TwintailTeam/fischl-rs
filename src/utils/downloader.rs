@@ -1,5 +1,5 @@
 use crate::utils::prettify_bytes;
-use std::io::Seek;
+use std::io::{Read, Seek};
 use std::path::PathBuf;
 use std::fs::File;
 use reqwest::header::{RANGE, USER_AGENT};
@@ -366,14 +366,15 @@ impl Downloader {
                     return Ok(());
                 }
 
-                let writer = request.copy_to(&mut file);
-                if let Err(err) = writer {
-                    return Err(DownloadingError::OutputFileError(path, err.to_string()));
+                let mut buffer = [0; 8192];
+                loop {
+                    let n = request.read(&mut buffer).unwrap();
+                    if n == 0 { break; }
+                    if let Err(err) = file.write_all(&buffer[..n]) { return Err(DownloadingError::OutputFileError(path, err.to_string())); }
+                    let _ =file.write_all(&buffer[..n]);
+                    downloaded += n;
+                    progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
                 }
-
-                downloaded += file.metadata().unwrap().len() as usize;
-                progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
-
                 Ok(())
             }
             Err(err) => Err(DownloadingError::OutputFileError(path, err.to_string()))
