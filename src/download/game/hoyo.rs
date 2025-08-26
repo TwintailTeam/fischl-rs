@@ -125,13 +125,13 @@ impl Sophon for Game {
                 let injector = Arc::new(Injector::<ManifestFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..8 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..6 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in decoded.files.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(8);
+                let mut handles = Vec::with_capacity(6);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -474,13 +474,13 @@ impl Sophon for Game {
                 let injector = Arc::new(Injector::<ManifestFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..8 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..6 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in decoded.files.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(8);
+                let mut handles = Vec::with_capacity(6);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -684,7 +684,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
     let file = tokio::fs::OpenOptions::new().create(true).write(true).open(&fp).await.unwrap();
     file.set_len(chunk_task.size).await.unwrap();
     let writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
-    let csem = Arc::new(tokio::sync::Semaphore::new(120));
+    let csem = Arc::new(tokio::sync::Semaphore::new(160));
 
     let mut chunk_futures = FuturesUnordered::new();
     for c in chunk_task.chunks.clone() {
