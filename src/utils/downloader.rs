@@ -212,10 +212,9 @@ impl AsyncDownloader {
                 if let Err(err) = file.flush().await {
                     return Err(DownloadingError::OutputFileError(path, err.to_string()));
                 }
-
-                progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
                 drop(file);
-            Ok(())
+                progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
+                Ok(())
             }
             Err(err) => Err(DownloadingError::OutputFileError(path, err.to_string()))
         }
