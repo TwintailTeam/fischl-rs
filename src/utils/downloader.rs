@@ -370,8 +370,8 @@ impl Downloader {
                 loop {
                     let n = request.read(&mut buffer).unwrap();
                     if n == 0 { break; }
+                    use std::io::Write;
                     if let Err(err) = file.write_all(&buffer[..n]) { return Err(DownloadingError::OutputFileError(path, err.to_string())); }
-                    let _ =file.write_all(&buffer[..n]);
                     downloaded += n;
                     progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
                 }
