@@ -15,7 +15,7 @@ pub mod free_space;
 pub mod game;
 pub mod downloader;
 
-pub(crate) fn get_github_release(repository: String) -> Option<GithubRelease> {
+pub fn get_github_release(repository: String) -> Option<GithubRelease> {
     if repository.is_empty() {
         None
     } else {
