@@ -699,7 +699,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
 
             if dl_result.is_ok() {
                 let valid = validate_checksum(chunk_path.as_path(), c.chunk_md5.to_ascii_lowercase()).await;
-                if valid {
+                if valid && chunk_path.exists() {
                     let p = sem.acquire_owned().await.unwrap();
                     let buffer = tokio::task::spawn_blocking(move || {
                         let file = fs::File::open(&chunk_path).unwrap();
