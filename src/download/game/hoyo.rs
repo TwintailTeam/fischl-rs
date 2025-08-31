@@ -707,8 +707,6 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
                         let mut decoder = zstd::Decoder::new(&mut reader).unwrap();
                         let mut buf = Vec::with_capacity(c.chunk_decompressed_size as usize);
                         copy(&mut decoder, &mut buf).unwrap();
-                        drop(decoder);
-                        drop(reader);
                         buf
                     }).await.unwrap();
                     drop(p);
