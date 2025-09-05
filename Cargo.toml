@@ -20,15 +20,15 @@ prost = {version = "0.14", features = [], optional = true}
 tokio = {version = "1.45", features = ["macros"]}
 reqwest-middleware = "0.4"
 reqwest-retry = "0.7"
-sysinfo = "0.36"
+sysinfo = "0.37"
 serde_json = "1.0"
 thiserror = "1.0"
 futures-util = "0.3"
 futures = "0.3"
-zip = {version = "4.2.0", default-features = false, features = ["deflate"], optional = true}
+zip = {version = "4.6", default-features = false, features = ["deflate"], optional = true}
 tar = {version = "0.4.44", optional = true}
 flate2 = {version = "1.1.2", default-features = false, features = ["zlib-rs"], optional = true}
-liblzma = {version = "0.4.2", features = ["static"], optional = true}
+liblzma = {version = "0.4", features = ["static"], optional = true}
 zstd = {version = "0.13.3", optional = true}
 crossbeam-deque = {version = "0.8.6", optional = true}
 
