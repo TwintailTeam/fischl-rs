@@ -308,7 +308,7 @@ impl Sophon for Game {
                                             drop(output);
 
                                             let of = mainp.join(&chunk.original_filename);
-                                            tokio::task::spawn_blocking(move || { if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {} });
+                                            if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
                                         } else {
                                             let mut output = fs::File::create(&diffp).unwrap();
                                             let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
@@ -320,7 +320,7 @@ impl Sophon for Game {
                                             drop(output);
 
                                             let of = mainp.join(&chunk.original_filename);
-                                            tokio::task::spawn_blocking(move || { if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {} });
+                                            if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
                                         }
                                     }
                                 } else { continue; }
@@ -377,7 +377,7 @@ impl Sophon for Game {
                                                 drop(output);
 
                                                 let of = mainp.join(&chunk.original_filename);
-                                                tokio::task::spawn_blocking(move || { if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {} });
+                                                if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
                                             } else {
                                                 let mut output = fs::File::create(&diffp).unwrap();
                                                 let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
@@ -389,7 +389,7 @@ impl Sophon for Game {
                                                 drop(output);
 
                                                 let of = mainp.join(&chunk.original_filename);
-                                                tokio::task::spawn_blocking(move || { if let Err(_) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) {} });
+                                                if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
                                             }
                                         }
                                     } else { continue; }
@@ -407,16 +407,13 @@ impl Sophon for Game {
                 }
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
-                // Move from "staging" to "game_path" and delete "patching" directory
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
                 if moved.is_ok() {
                     // Delete all unneeded files after applying the patch and purging the temp directory
                     if preloaded {  } else { fs::remove_dir_all(p.as_path()).unwrap(); }
                     let purge_list: Vec<(String, DeleteFiles)> = decoded.delete_files.into_iter().filter(|(v, _f)| version.as_str() == v.as_str()).collect();
                     if !purge_list.is_empty() {
-                        for (_v, df) in purge_list.into_iter() {
-                            for f in df.files { let fp = mainp.join(&f.name); if fp.exists() { fs::remove_file(&fp).unwrap(); }
-                            }
+                        for (_v, df) in purge_list.into_iter() { for f in df.files { let fp = mainp.join(&f.name); if fp.exists() { fs::remove_file(&fp).unwrap(); }; }
                         }
                     }
                 }
@@ -684,7 +681,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
     let file = tokio::fs::OpenOptions::new().create(true).write(true).open(&fp).await.unwrap();
     file.set_len(chunk_task.size).await.unwrap();
     let writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
-    let csem = Arc::new(tokio::sync::Semaphore::new(100));
+    let csem = Arc::new(tokio::sync::Semaphore::new(200));
 
     let mut chunk_futures = FuturesUnordered::new();
     for c in chunk_task.chunks.clone() {
