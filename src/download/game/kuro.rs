@@ -135,6 +135,7 @@ impl Kuro for Game {
                 // has krdiff
                 if preloaded { true } else {
                     let fpi = files.patch_infos.unwrap();
+                    let patch_lock = Arc::new(tokio::sync::Mutex::new(()));
                     // No preload
                     let file_tasks = futures::stream::iter(files.resource.into_iter().map(|ff| {
                         let chunk_base = chunk_base.clone();
@@ -145,11 +146,13 @@ impl Kuro for Game {
                         let fpi = fpi.clone();
                         let krpatchzp = krpatchz_path.clone();
                         let game_path = game_path.clone();
+                        let patch_lock = patch_lock.clone();
                         async move {
                             let progress_counter = progress_counter.clone();
                             let progress = progress.clone();
                             let client = client.clone();
                             let krpatchz_path = krpatchzp.clone();
+                            let patch_lock = patch_lock.clone();
 
                             let spc = staging.clone();
                             let cb = chunk_base.clone();
@@ -176,15 +179,12 @@ impl Kuro for Game {
                                 let r1 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
                                 if r1 {
                                     if filen.ends_with(".krdiff") {
-                                        let diffp = spc.join(fpi.first().unwrap().clone().dest).to_str().unwrap().to_string();
-                                        let diffpc = diffp.clone();
-                                        let r = tokio::task::spawn_blocking(move || {
-                                            let diffp = diffpc.clone();
-                                            if let Err(_) = krpatchz(krpatchz_path.to_owned(), &game_path, &diffp) {}
-                                        });
-                                        if r.await.is_ok() { tokio::fs::remove_file(&diffp).await.unwrap(); }
+                                        let _ = patch_lock.lock().await;
+                                        let diffp = spc.join(fpi.first().unwrap().clone().dest);
+                                        let stringed = diffp.to_str().unwrap().to_string();
+                                        if let Err(e) = krpatchz(krpatchz_path.to_owned(), &game_path, &stringed) { eprintln!("Failed to krdiff with error: {}", e)}
+                                        if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                                     }
-
                                     progress_counter.fetch_add(ff.size, Ordering::SeqCst);
                                     let processed = progress_counter.load(Ordering::SeqCst);
                                     progress(processed, total_bytes);
@@ -196,13 +196,11 @@ impl Kuro for Game {
                                         let r2 = validate_checksum(output_path.as_path(), ff.md5.to_ascii_lowercase()).await;
                                         if r2 {
                                             if filen.ends_with(".krdiff") {
-                                                let diffp = spc.join(fpi.first().unwrap().clone().dest).to_str().unwrap().to_string();
-                                                let diffpc = diffp.clone();
-                                                tokio::task::spawn_blocking(move || {
-                                                    let diffp = diffpc.clone();
-                                                    if let Err(_) = krpatchz(krpatchz_path.to_owned(), &game_path, &diffp) {}
-                                                }).await.unwrap();
-                                                //if r.is_ok() { tokio::fs::remove_file(&diffp).await.unwrap(); }
+                                                let _ = patch_lock.lock().await;
+                                                let diffp = spc.join(fpi.first().unwrap().clone().dest);
+                                                let stringed = diffp.to_str().unwrap().to_string();
+                                                if let Err(e) = krpatchz(krpatchz_path.to_owned(), &game_path, &stringed) { eprintln!("Failed to krdiff with error: {}", e)}
+                                                if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                                             }
                                             progress_counter.fetch_add(ff.size, Ordering::SeqCst);
                                             let processed = progress_counter.load(Ordering::SeqCst);
@@ -216,18 +214,12 @@ impl Kuro for Game {
                     file_tasks.await;
                     // All files are complete make sure we report done just in case
                     progress(total_bytes, total_bytes);
-                    // Move from "staging" to "game_path" and delete "patching" directory
                     let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
                     if moved.is_ok() {
                         tokio::fs::remove_dir_all(p.as_path()).await.unwrap();
                         if files.delete_files.is_some() {
                             let dfl = files.delete_files.unwrap();
-                            if !dfl.is_empty() {
-                                for df in dfl {
-                                    let dfp = mainp.join(&df);
-                                    if dfp.exists() { tokio::fs::remove_file(&dfp).await.unwrap(); }
-                                }
-                            }
+                            if !dfl.is_empty() { for df in dfl { let dfp = mainp.join(&df); if dfp.exists() { tokio::fs::remove_file(&dfp).await.unwrap(); } } }
                         }
                     }
                     true
@@ -289,18 +281,12 @@ impl Kuro for Game {
                 file_tasks.await;
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
-                // Move from "staging" to "game_path" and delete "patching" directory
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
                 if moved.is_ok() {
                     tokio::fs::remove_dir_all(p.as_path()).await.unwrap();
                     if files.delete_files.is_some() {
                         let dfl = files.delete_files.unwrap();
-                        if !dfl.is_empty() {
-                            for df in dfl {
-                                let dfp = mainp.join(&df);
-                                if dfp.exists() { tokio::fs::remove_file(&dfp).await.unwrap(); }
-                            }
-                        }
+                        if !dfl.is_empty() { for df in dfl { let dfp = mainp.join(&df); if dfp.exists() { tokio::fs::remove_file(&dfp).await.unwrap(); } } }
                     }
                 }
                 true
