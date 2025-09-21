@@ -8,7 +8,7 @@ pub struct GithubRelease {
     pub html_url: Option<String>,
     pub id: i64,
     pub author: Author,
-    pub node_id: Option<u64>,
+    pub node_id: Option<String>,
     pub tag_name: Option<String>,
     pub target_commitish: Option<String>,
     pub name: Option<String>,
@@ -50,7 +50,7 @@ pub struct Author {
 pub struct Asset {
     pub url: Option<String>,
     pub id: i64,
-    pub node_id: String,
+    pub node_id: Option<String>,
     pub name: Option<String>,
     pub label: Option<String>,
     pub uploader: Uploader,
