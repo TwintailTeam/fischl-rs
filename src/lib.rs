@@ -153,13 +153,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn download_hdiff_kuro_test() {
-        let manifest_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.0/jLYdEEVBgAgPqJgUZlVztdMPFnUJnRjQ/resource/50004/2.5.0/2.4.3/indexFile.json";
-        let chunkurl_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.0/jLYdEEVBgAgPqJgUZlVztdMPFnUJnRjQ/resource/50004/2.5.0/2.4.3/resources";
+    async fn download_diff_kuro_test() {
+        let manifest = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/resource/50015/3.8.0/3.5.0/indexFile.json";
+        let chunk_res = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/resource/50015/3.8.0/3.5.0/resources/";
+        let chunk_zip = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/zip";
 
         let path = "/games/kuro/wuwa_global/testing";
         let krdiffbin = "/home/tukan/Desktop/Programming/rust/workspace/KeqingLauncher/src-tauri/resources/krpatchz".to_string();
-        let rep = <Game as Kuro>::patch(manifest_wuwa.to_string(), "2.4.3".to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), krdiffbin, false, |current,total| {
+        let rep = <Game as Kuro>::patch(manifest.to_string(), chunk_res.to_string(), chunk_zip.to_string(), path.parse().unwrap(), krdiffbin, false, |current,total| {
             println!("current: {}, total: {}", current, total);
         }).await;
         if rep {
