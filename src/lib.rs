@@ -5,23 +5,9 @@ pub mod download;
 
 #[cfg(test)]
 mod tests {
-    /*#[test]
-    fn prefix_new() {
-        let wp = "/home/tukan/.local/share/com.keqinglauncher.app/compatibility/runners/8.26-wine-ge-proton/bin/wine64".to_string();
-        let pp = "/home/tukan/.local/share/com.keqinglauncher.app/compatibility/prefixes/nap_global/1.6.0".to_string();
-        let prefix = Compat::setup_prefix(wp, pp);
-        if prefix.is_ok() {
-            let p = prefix.unwrap();
-            Compat::end_session(p.wine.wineloader().to_str().unwrap().to_string(), p.wine.prefix.to_str().unwrap().to_string()).unwrap();
-            Compat::shutdown(p.wine.wineloader().to_str().unwrap().to_string(), p.wine.prefix.to_str().unwrap().to_string()).unwrap();
-            println!("Created prefix without issues!");
-        } else {
-            println!("Failed to create a prefix!");
-        }
-    }*/
     use std::path::Path;
     use crate::download::{Extras};
-    use crate::download::game::{Game, Hoyo, Kuro, Sophon};
+    use crate::download::game::{Game, Kuro, Sophon, Zipped};
     use crate::utils::{extract_archive, prettify_bytes};
 
     #[test]
@@ -61,32 +47,6 @@ mod tests {
         }
     }
 
-    /*#[test]
-    fn download_runner_test() {
-        let dest = "/home/tukan/.local/share/twintaillauncher/compatibility/runners/10.4-wine-vanilla";
-        let url = "https://github.com/Kron4ek/Wine-Builds/releases/download/10.4/wine-10.4-amd64.tar.xz";
-
-        let success = crate::compat::Compat::download_runner(url.to_string(), dest.to_string(), true);
-        if success {
-            println!("runner extracted!");
-        } else {
-            println!("failed to download runner");
-        }
-    }*/
-
-    /*#[test]
-    fn download_dxvk_test() {
-        let dest = "/home/tukan/.local/share/twintaillauncher/compatibility/dxvk/2.6.0-vanilla";
-        let url = "https://github.com/doitsujin/dxvk/releases/download/v2.6/dxvk-2.6.tar.gz";
-
-        let success = crate::compat::Compat::download_dxvk(url.to_string(), dest.to_string(), true);
-        if success {
-            println!("dxvk extracted!");
-        } else {
-            println!("failed to download dxvk");
-        }
-    }*/
-
     #[test]
     fn download_fpsunlock_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/fps_unlock/testing";
@@ -122,33 +82,6 @@ mod tests {
         }
     }
 
-    // WARNING: Repair game test will take A REALLY LONG time!
-    #[test]
-    fn repair_game_test() {
-        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
-        let path = "/games/hoyo/hk4e_global/live";
-        let rep = <Game as Hoyo>::repair_game(res_list, path.parse().unwrap(), false, |_, _| {});
-        if rep { 
-            println!("repair_game success!");
-        } else {
-            println!("repair_game failure!");
-        }
-    }
-
-    // WARNING: Repair audio test will take A REALLY LONG time!
-    /*#[test]
-    fn repair_audio_test() {
-        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
-        let path = "/games/hoyo/hk4e_global/live";
-
-        let rep = <Game as Hoyo>::repair_audio(res_list, VoiceLocale::English.to_folder().to_string(), path.parse().unwrap(), false, |_, _| {});
-        if rep {
-            println!("repair_audio success!");
-        } else {
-            println!("repair_audio failure!");
-        }
-    }*/
-
     #[test]
     fn download_fullgame_test() {
         let mut urls = Vec::<String>::new();
@@ -163,7 +96,7 @@ mod tests {
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/Audio_English(US)_5.5.0.zip"));
 
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Hoyo>::download(urls, path.parse().unwrap(), |current, total| {
+        let rep = <Game as Zipped>::download(urls, path.parse().unwrap(), |current, total| {
             println!("current: {} | total: {}", current, total);
         });
         if rep {
@@ -177,7 +110,7 @@ mod tests {
     fn download_hdiff_test() {
         let url = "https://autopatchhk.yuanshen.com/client_app/update/hk4e_global/game_5.4.0_5.5.0_hdiff_IlvHovyEdpXnwiCH.zip";
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Hoyo>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
+        let rep = <Game as Zipped>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
             println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
         });
         if rep {
@@ -187,32 +120,29 @@ mod tests {
         }
     }
 
-    // WARNING: Repair game test will take A REALLY LONG time!
-    #[tokio::test]
-    async fn repair_game_kuro_test() {
-        let manifest_pgr = "https://zspms-alicdn-gamestarter.kurogame.net/pcstarter/prod/game/G143/3.1.0.0/veNkEIbQIxPpTxlZvL1M9blBd3UmcUXh/resource.json";
-        let manifest_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.3.1/axFplYInrILNAVwHsqPWvgirHzeKeBgS/resource/50004/2.3.1/indexFile.json";
-        let chunkurl_pgr = "https://zspms-alicdn-gamestarter.kurogame.net/pcstarter/prod/game/G143/3.1.0.0/veNkEIbQIxPpTxlZvL1M9blBd3UmcUXh/zip";
-        let chunkurl_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/2.3.1/axFplYInrILNAVwHsqPWvgirHzeKeBgS/zip";
-
-        let path = "/games/kuro/wuwa_global/live/testing";
-        let rep = <Game as Kuro>::repair_game(manifest_wuwa.to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), false, |_, _| {}).await;
+    #[test]
+    fn repair_game_test() {
+        let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
+        let path = "/games/hoyo/hk4e_global/live";
+        let rep = <Game as Zipped>::repair_game(res_list, path.parse().unwrap(), false, |_, _| {});
         if rep {
-            println!("repair_game_kuro success!");
+            println!("repair_game success!");
         } else {
-            println!("repair_game_kuro failure!");
+            println!("repair_game failure!");
         }
     }
 
+    // KuroGame
     #[tokio::test]
     async fn download_fullgame_kuro_test() {
-        let manifest_pgr = "https://zspms-alicdn-gamestarter.kurogame.net/pcstarter/prod/game/G143/3.1.0.0/veNkEIbQIxPpTxlZvL1M9blBd3UmcUXh/resource.json";
-        let manifest_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.1/IYOwHBLfeAXMxVgHwGybWvvSqiDnPlbs/resource/50004/2.5.1/indexFile.json";
-        let chunkurl_pgr = "https://zspms-alicdn-gamestarter.kurogame.net/pcstarter/prod/game/G143/3.1.0.0/veNkEIbQIxPpTxlZvL1M9blBd3UmcUXh/zip";
-        let chunkurl_wuwa = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.1/IYOwHBLfeAXMxVgHwGybWvvSqiDnPlbs/zip";
+        let manifest = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/resource/50015/3.8.0/indexFile.json";
+        let chunkurl = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/zip";
+
+        //let manifest = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.6.2/TmryWWDzYshLRahsXoGizseCUnInEDtj/resource/50004/2.6.2/indexFile.json";
+        //let chunkurl = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.6.2/TmryWWDzYshLRahsXoGizseCUnInEDtj/zip";
 
         let path = "/games/kuro/wuwa_global/testing";
-        let rep = <Game as Kuro>::download(manifest_wuwa.to_string(), chunkurl_wuwa.to_string(), path.parse().unwrap(), |current, total| {
+        let rep = <Game as Kuro>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
         if rep {
@@ -236,6 +166,44 @@ mod tests {
             println!("diff_game_kuro success!");
         } else {
             println!("diff_game_kuro failure!");
+        }
+    }
+
+    #[tokio::test]
+    async fn repair_game_kuro_test() {
+        let manifest = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/resource/50015/3.8.0/indexFile.json";
+        let chunkurl = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/zip";
+
+        //let manifest = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.1/IYOwHBLfeAXMxVgHwGybWvvSqiDnPlbs/resource/50004/2.5.1/indexFile.json";
+        //let chunkurl = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.1/IYOwHBLfeAXMxVgHwGybWvvSqiDnPlbs/zip";
+
+        let path = "/games/kuro/wuwa_global/testing";
+        let rep = <Game as Kuro>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false, |_, _| {}).await;
+        if rep {
+            println!("repair_game_kuro success!");
+        } else {
+            println!("repair_game_kuro failure!");
+        }
+    }
+
+    #[tokio::test]
+    async fn download_preload_kuro_test() {
+        let manifest = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/resource/50015/3.8.0/3.5.0/indexFile.json";
+        let chunkurl_res = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/resource/50015/3.8.0/3.5.0/resources/";
+        let chunkurl_zip = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/zip";
+
+        /*let manifest = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.6.1/hjetrIFhEnolsFvBMHVnqaASBoWlvNNx/resource/50004/2.6.1/2.5.1/indexFile.json";
+        let chunkurl_res = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.6.0/vjRSVRVUcliHOxTgAIIBaYdozsxSvujT/resource/50004/2.6.0/2.5.1/resources/";
+        let chunkurl_zip = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.6.1/hjetrIFhEnolsFvBMHVnqaASBoWlvNNx/zip";*/
+
+        let path = "/games/kuro/wuwa_global/testing";
+        let rep = <Game as Kuro>::preload(manifest.to_string(), chunkurl_res.to_string(), chunkurl_zip.to_string(), path.parse().unwrap(),|current,total| {
+            println!("current: {}, total: {}", current, total);
+        }).await;
+        if rep {
+            println!("preload_game_kuro success!");
+        } else {
+            println!("preload_game_kuro failure!");
         }
     }
 

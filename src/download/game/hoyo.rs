@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::{Cursor, SeekFrom, Write, Read, BufWriter, BufReader, copy, Seek};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::sync::atomic::{AtomicU64, Ordering};
 use crossbeam_deque::{Injector, Steal, Worker};
 use futures_util::stream::FuturesUnordered;
@@ -9,73 +9,10 @@ use futures_util::StreamExt;
 use prost::Message;
 use reqwest_middleware::ClientWithMiddleware;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-use crate::download::game::{Game, Hoyo, Sophon};
+use crate::download::game::{Game, Sophon};
 use crate::utils::{hpatchz, move_all, validate_checksum};
-use crate::utils::downloader::{AsyncDownloader, Downloader};
-use crate::utils::game::{list_integrity_files};
+use crate::utils::downloader::{AsyncDownloader};
 use crate::utils::proto::{DeleteFiles, ManifestFile, PatchChunk, PatchFile, SophonDiff, SophonManifest};
-
-impl Hoyo for Game {
-    fn download(urls: Vec<String>, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
-        if urls.is_empty() || game_path.is_empty() { return false; }
-
-        let progress = Arc::new(Mutex::new(progress));
-        for url in urls {
-            let p = progress.clone();
-            let mut downloader = Downloader::new(url).unwrap();
-            let file = downloader.get_filename().to_string();
-            downloader.download(Path::new(game_path.as_str()).to_path_buf().join(&file), move |current, total| {
-                let pl = p.lock().unwrap();
-                pl(current, total);
-            }).unwrap();
-        }
-        true
-    }
-
-    fn patch(url: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
-        if url.is_empty() || game_path.is_empty() { return false; }
-
-        let mut downloader = Downloader::new(url).unwrap();
-        let file = downloader.get_filename().to_string();
-        let dl = downloader.download(Path::new(game_path.as_str()).to_path_buf().join(&file), progress);
-        if dl.is_ok() { true } else { false }
-    }
-
-    fn repair_game(res_list: String, game_path: String, is_fast: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
-        let files = list_integrity_files(res_list, "pkg_version".parse().unwrap());
-
-        if files.is_some() {
-            let f = files.unwrap();
-            let progress = Arc::new(Mutex::new(progress));
-
-            f.iter().for_each(|file| {
-                let p = progress.clone();
-                let path = Path::new(game_path.as_str());
-
-                if is_fast {
-                    let rslt= file.fast_verify(path.to_path_buf().clone());
-                    if !rslt {
-                        file.repair(path.to_path_buf(), move |current, total| {
-                            let pl = p.lock().unwrap();
-                            pl(current, total);
-                        });
-                    }
-                } else {
-                    let rslt = file.verify(path.to_path_buf().clone());
-                    if !rslt {
-                        file.repair(path.to_path_buf(), move |current, total| {
-                            let pl = p.lock().unwrap();
-                            pl(current, total);
-                        });
-                    }
-                }
-            });
-            true
-        } else {
-            false
-        }
-    }
-}
 
 impl Sophon for Game {
     async fn download<F>(manifest: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
@@ -86,7 +23,6 @@ impl Sophon for Game {
         let dlr = p.join("repairing");
         let dlptch = p.join("patching");
 
-        // If these directories exist delete them for safety
         if dlr.exists() { fs::remove_dir_all(&dlr).unwrap(); }
         if dlptch.exists() { fs::remove_dir_all(&dlptch).unwrap(); }
 
@@ -198,7 +134,6 @@ impl Sophon for Game {
         let dlp = p.join("downloading");
         let dlr = p.join("repairing");
 
-        // If these directories exist delete them for safety
         if dlp.exists() { fs::remove_dir_all(&dlp).unwrap(); }
         if dlr.exists() { fs::remove_dir_all(&dlr).unwrap(); }
 
@@ -435,7 +370,6 @@ impl Sophon for Game {
         let dlp = p.join("downloading");
         let dlptch = p.join("patching");
 
-        // If these directories exist delete them for safety
         if dlp.exists() { fs::remove_dir_all(&dlp).unwrap(); }
         if dlptch.exists() { fs::remove_dir_all(&dlptch).unwrap(); }
 

@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Test tests::download_runner_test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="test --package fischl --lib tests::download_runner_test -- --exact" />
+  <configuration default="false" name="Test tests::download_fpsunlock_test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+    <option name="command" value="test --package fischl --lib tests::download_fpsunlock_test -- --exact" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />
     <option name="emulateTerminal" value="true" />

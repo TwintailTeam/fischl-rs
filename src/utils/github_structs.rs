@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GithubRelease {
-    pub url: String,
+    pub url: Option<String>,
     pub assets_url: String,
     pub upload_url: String,
     pub html_url: String,
@@ -29,7 +29,7 @@ pub struct Author {
     pub node_id: String,
     pub avatar_url: String,
     pub gravatar_id: String,
-    pub url: String,
+    pub url: Option<String>,
     pub html_url: String,
     pub followers_url: String,
     pub following_url: String,
@@ -48,7 +48,7 @@ pub struct Author {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
-    pub url: String,
+    pub url: Option<String>,
     pub id: i64,
     pub node_id: String,
     pub name: String,
@@ -70,7 +70,7 @@ pub struct Uploader {
     pub node_id: String,
     pub avatar_url: String,
     pub gravatar_id: String,
-    pub url: String,
+    pub url: Option<String>,
     pub html_url: String,
     pub followers_url: String,
     pub following_url: String,

@@ -12,7 +12,6 @@ pub(crate) mod github_structs;
 pub(crate) mod codeberg_structs;
 pub(crate) mod proto;
 pub mod free_space;
-pub mod game;
 pub mod downloader;
 
 pub fn get_github_release(repository: String) -> Option<GithubRelease> {
@@ -239,7 +238,7 @@ pub fn patch_aki(file: String) {
 pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest: String) {
     let ext = get_full_extension(archive_path.as_str()).unwrap();
     match ext {
-        "zip" => {
+        "zip" | "krzip" => {
             let archive = zip::ZipArchive::new(fs::File::open(archive_path.clone()).unwrap());
             if archive.is_ok() {
                 let mut a = archive.unwrap();
@@ -282,12 +281,14 @@ pub struct KuroIndex {
     pub delete_files: Option<Vec<String>>,
     #[serde(rename = "patchInfos", default)]
     pub patch_infos: Option<Vec<KuroPatchEntry>>,
+    #[serde(rename = "zipInfos", default)]
+    pub zip_infos: Option<Vec<KuroPatchEntry>>,
     #[serde(rename = "groupResource", default)]
-    pub group_resource: Vec<KuroResource>,
+    pub group_resource: Option<Vec<KuroResource>>,
     #[serde(rename = "groupInfos", default)]
-    pub group_infos: Vec<KuroGroupInfos>,
+    pub group_infos: Option<Vec<KuroGroupInfos>>,
     #[serde(rename = "applyTypes", default)]
-    pub apply_types: Vec<String>,
+    pub apply_types: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
