@@ -73,12 +73,12 @@ pub fn extract_archive(sevenz_bin: String, archive_path: String, extract_dest: S
     if !src.exists() { false } else if !dest.exists() {
         fs::create_dir_all(dest).unwrap();
         actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
-        fs::remove_file(src).unwrap();
+        if src.exists() { fs::remove_file(src).unwrap(); }
         if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
     } else {
         actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
-        fs::remove_file(src).unwrap();
+        if src.exists() { fs::remove_file(src).unwrap(); }
         if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
     }
@@ -268,9 +268,7 @@ pub(crate) fn get_full_extension(path: &str) -> Option<&str> {
     const MULTI_PART_EXTS: [&str; 2] = ["tar.gz", "tar.xz"];
     let file = path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(path);
     for ext in MULTI_PART_EXTS {
-        if file.ends_with(ext) {
-            return Some(ext);
-        }
+        if file.ends_with(ext) { return Some(ext); }
     }
     file.rsplit('.').nth(1).map(|_| file.rsplitn(2, '.').collect::<Vec<_>>()[0])
 }

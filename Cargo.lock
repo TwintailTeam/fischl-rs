@@ -362,7 +362,6 @@ dependencies = [
  "chksum-md5",
  "crossbeam-deque",
  "flate2",
- "futures",
  "futures-util",
  "liblzma",
  "prost",
