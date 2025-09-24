@@ -6,14 +6,14 @@ pub struct GithubRelease {
     pub assets_url: Option<String>,
     pub upload_url: Option<String>,
     pub html_url: Option<String>,
-    pub id: i64,
+    pub id: Option<i64>,
     pub author: Author,
     pub node_id: Option<String>,
     pub tag_name: Option<String>,
     pub target_commitish: Option<String>,
     pub name: Option<String>,
-    pub draft: bool,
-    pub prerelease: bool,
+    pub draft: Option<bool>,
+    pub prerelease: Option<bool>,
     pub created_at: Option<String>,
     pub published_at: Option<String>,
     pub assets: Vec<Asset>,
@@ -25,8 +25,8 @@ pub struct GithubRelease {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Author {
     pub login: Option<String>,
-    pub id: i64,
-    pub node_id: String,
+    pub id: Option<i64>,
+    pub node_id: Option<String>,
     pub avatar_url: Option<String>,
     pub gravatar_id: Option<String>,
     pub url: Option<String>,
@@ -43,18 +43,18 @@ pub struct Author {
     #[serde(rename = "type")]
     pub type_field: Option<String>,
     pub user_view_type: Option<String>,
-    pub site_admin: bool,
+    pub site_admin: Option<bool>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
     pub url: Option<String>,
-    pub id: i64,
+    pub id: Option<i64>,
     pub node_id: Option<String>,
     pub name: Option<String>,
     pub label: Option<String>,
     pub uploader: Uploader,
-    pub content_type: String,
+    pub content_type: Option<String>,
     pub state: Option<String>,
     pub size: Option<i64>,
     pub download_count: Option<i64>,
@@ -66,8 +66,8 @@ pub struct Asset {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Uploader {
     pub login: Option<String>,
-    pub id: i64,
-    pub node_id: String,
+    pub id: Option<i64>,
+    pub node_id: Option<String>,
     pub avatar_url: Option<String>,
     pub gravatar_id: Option<String>,
     pub url: Option<String>,
@@ -84,5 +84,5 @@ pub struct Uploader {
     #[serde(rename = "type")]
     pub type_field: Option<String>,
     pub user_view_type: Option<String>,
-    pub site_admin: bool,
+    pub site_admin: Option<bool>,
 }
