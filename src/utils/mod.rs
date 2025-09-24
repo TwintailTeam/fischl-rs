@@ -20,13 +20,17 @@ pub fn get_github_release(repository: String) -> Option<GithubRelease> {
     } else {
         let url = format!("https://api.github.com/repos/{}/releases/latest", repository);
         let client = reqwest::blocking::Client::new();
-        let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").send();
-        if response.is_ok() {
-            let list = response.unwrap();
-            let jsonified: GithubRelease = list.json().unwrap();
-            Some(jsonified)
-        } else {
-            None
+        let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").header("X-GitHub-Api-Version", "2022-11-28").header("Accept", "application/vnd.github+json").send();
+        match response {
+            Ok(resp) => {
+                // Check for HTTP errors explicitly
+                if let Err(err) = resp.error_for_status_ref() { eprintln!("GitHub API returned error status: {:?}", err.status());return None; }
+                match resp.json::<GithubRelease>() {
+                    Ok(github_release) => Some(github_release),
+                    Err(json_err) => { eprintln!("Failed to parse JSON: {}", json_err);None }
+                }
+            }
+            Err(err) => { eprintln!("Network or request failed: {}", err);None }
         }
     }
 }
