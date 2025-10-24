@@ -41,13 +41,13 @@ impl Kuro for Game {
             let injector = Arc::new(Injector::<KuroResource>::new());
             let mut workers = Vec::new();
             let mut stealers_list = Vec::new();
-            for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            for _ in 0..3 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
             let stealers = Arc::new(stealers_list);
             for task in files.resource.into_iter() { injector.push(task); }
-            let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(3));
 
             // Spawn worker tasks
-            let mut handles = Vec::with_capacity(6);
+            let mut handles = Vec::with_capacity(3);
             for _i in 0..workers.len() {
                 let local_worker = workers.pop().unwrap();
                 let stealers = stealers.clone();
@@ -208,13 +208,13 @@ impl Kuro for Game {
                 let injector = Arc::new(Injector::<KuroResource>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..3 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in files.resource.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(3));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(6);
+                let mut handles = Vec::with_capacity(3);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -358,13 +358,13 @@ impl Kuro for Game {
             let injector = Arc::new(Injector::<KuroResource>::new());
             let mut workers = Vec::new();
             let mut stealers_list = Vec::new();
-            for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            for _ in 0..3 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
             let stealers = Arc::new(stealers_list);
             for task in files.resource.into_iter() { injector.push(task); }
-            let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(3));
 
             // Spawn worker tasks
-            let mut handles = Vec::with_capacity(6);
+            let mut handles = Vec::with_capacity(3);
             for _i in 0..workers.len() {
                 let local_worker = workers.pop().unwrap();
                 let stealers = stealers.clone();
@@ -467,13 +467,13 @@ impl Kuro for Game {
             let injector = Arc::new(Injector::<KuroResource>::new());
             let mut workers = Vec::new();
             let mut stealers_list = Vec::new();
-            for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            for _ in 0..3 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
             let stealers = Arc::new(stealers_list);
             for task in files.resource.into_iter() { injector.push(task); }
-            let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(3));
 
             // Spawn worker tasks
-            let mut handles = Vec::with_capacity(6);
+            let mut handles = Vec::with_capacity(3);
             for _i in 0..workers.len() {
                 let local_worker = workers.pop().unwrap();
                 let stealers = stealers.clone();
