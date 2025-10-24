@@ -41,13 +41,13 @@ impl Kuro for Game {
             let injector = Arc::new(Injector::<KuroResource>::new());
             let mut workers = Vec::new();
             let mut stealers_list = Vec::new();
-            for _ in 0..3 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
             let stealers = Arc::new(stealers_list);
             for task in files.resource.into_iter() { injector.push(task); }
-            let file_sem = Arc::new(tokio::sync::Semaphore::new(3));
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
             // Spawn worker tasks
-            let mut handles = Vec::with_capacity(3);
+            let mut handles = Vec::with_capacity(6);
             for _i in 0..workers.len() {
                 let local_worker = workers.pop().unwrap();
                 let stealers = stealers.clone();
@@ -97,6 +97,17 @@ impl Kuro for Game {
                                     progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                     let processed = progress_counter.load(Ordering::SeqCst);
                                     progress_cb(processed, total_bytes);
+                                } else {
+                                    // Retry download
+                                    let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
+                                    let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
+                                    let cvalid = validate_checksum(staging_dir.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+
+                                    if dlf.is_ok() && cvalid {
+                                        progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                        let processed = progress_counter.load(Ordering::SeqCst);
+                                        progress_cb(processed, total_bytes);
+                                    } else { eprintln!("Failed to validate file with hash after retry!"); }
                                 }
                                 drop(permit);
                             }
@@ -208,13 +219,13 @@ impl Kuro for Game {
                 let injector = Arc::new(Injector::<KuroResource>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..3 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in files.resource.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(3));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(3);
+                let mut handles = Vec::with_capacity(6);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -268,6 +279,17 @@ impl Kuro for Game {
                                         progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         let processed = progress_counter.load(Ordering::SeqCst);
                                         progress_cb(processed, total_bytes);
+                                    } else {
+                                        // Retry download
+                                        let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}{pn}").to_string()).await.unwrap();
+                                        let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
+                                        let cvalid = validate_checksum(staging_dir.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+
+                                        if dlf.is_ok() && cvalid {
+                                            progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                            let processed = progress_counter.load(Ordering::SeqCst);
+                                            progress_cb(processed, total_bytes);
+                                        } else { eprintln!("Failed to validate patch file after retry!"); }
                                     }
                                     drop(permit);
                                 }
@@ -358,13 +380,13 @@ impl Kuro for Game {
             let injector = Arc::new(Injector::<KuroResource>::new());
             let mut workers = Vec::new();
             let mut stealers_list = Vec::new();
-            for _ in 0..3 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
             let stealers = Arc::new(stealers_list);
             for task in files.resource.into_iter() { injector.push(task); }
-            let file_sem = Arc::new(tokio::sync::Semaphore::new(3));
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
             // Spawn worker tasks
-            let mut handles = Vec::with_capacity(3);
+            let mut handles = Vec::with_capacity(6);
             for _i in 0..workers.len() {
                 let local_worker = workers.pop().unwrap();
                 let stealers = stealers.clone();
@@ -414,6 +436,17 @@ impl Kuro for Game {
                                     progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                     let processed = progress_counter.load(Ordering::SeqCst);
                                     progress_cb(processed, total_bytes);
+                                } else {
+                                    // Retry download
+                                    let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
+                                    let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
+                                    let cvalid = if is_fast { staging_dir.metadata().unwrap().len() == chunk_task.size } else { validate_checksum(staging_dir.as_path(), chunk_task.md5.to_ascii_lowercase()).await };
+
+                                    if dlf.is_ok() && cvalid {
+                                        progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                        let processed = progress_counter.load(Ordering::SeqCst);
+                                        progress_cb(processed, total_bytes);
+                                    } else { eprintln!("Failed to validate repair file after retry!"); }
                                 }
                                 drop(permit);
                             }
@@ -467,13 +500,13 @@ impl Kuro for Game {
             let injector = Arc::new(Injector::<KuroResource>::new());
             let mut workers = Vec::new();
             let mut stealers_list = Vec::new();
-            for _ in 0..3 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
             let stealers = Arc::new(stealers_list);
             for task in files.resource.into_iter() { injector.push(task); }
-            let file_sem = Arc::new(tokio::sync::Semaphore::new(3));
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
             // Spawn worker tasks
-            let mut handles = Vec::with_capacity(3);
+            let mut handles = Vec::with_capacity(6);
             for _i in 0..workers.len() {
                 let local_worker = workers.pop().unwrap();
                 let stealers = stealers.clone();
@@ -527,6 +560,17 @@ impl Kuro for Game {
                                     progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                     let processed = progress_counter.load(Ordering::SeqCst);
                                     progress_cb(processed, total_bytes);
+                                } else {
+                                    // Retry download
+                                    let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}{pn}").to_string()).await.unwrap();
+                                    let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
+                                    let cvalid = validate_checksum(staging_dir.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+
+                                    if dlf.is_ok() && cvalid {
+                                        progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                        let processed = progress_counter.load(Ordering::SeqCst);
+                                        progress_cb(processed, total_bytes);
+                                    } else { eprintln!("Failed to validate preload file after retry!"); }
                                 }
                                 drop(permit);
                             }
