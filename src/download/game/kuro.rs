@@ -41,13 +41,13 @@ impl Kuro for Game {
             let injector = Arc::new(Injector::<KuroResource>::new());
             let mut workers = Vec::new();
             let mut stealers_list = Vec::new();
-            for _ in 0..8 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
             let stealers = Arc::new(stealers_list);
             for task in files.resource.into_iter() { injector.push(task); }
-            let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
             // Spawn worker tasks
-            let mut handles = Vec::with_capacity(8);
+            let mut handles = Vec::with_capacity(6);
             for _i in 0..workers.len() {
                 let local_worker = workers.pop().unwrap();
                 let stealers = stealers.clone();
@@ -181,6 +181,18 @@ impl Kuro for Game {
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
+                // Wuwa has krpdiffs apply them if they exist
+                if files.group_infos.is_some() {
+                    let diffs = files.group_infos.unwrap();
+                    for d in diffs {
+                        let staging = staging.clone();
+                        let diffp = staging.join(d.dest.clone());
+                        let stringed = diffp.to_str().unwrap().to_string();
+                        let krd = krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        if krd.is_ok() {} else { eprintln!("Failed to apply krpdiff!") }
+                        if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
+                    }
+                }
                 // All files are complete make sure we report done just in case
                 progress(total_bytes, total_bytes);
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
@@ -196,13 +208,13 @@ impl Kuro for Game {
                 let injector = Arc::new(Injector::<KuroResource>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..8 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in files.resource.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(8);
+                let mut handles = Vec::with_capacity(6);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -246,7 +258,7 @@ impl Kuro for Game {
                                     }
 
                                     let pn = chunk_task.dest.clone();
-                                    let chunk_base = if chunk_task.dest.ends_with(".krzip") || chunk_task.dest.ends_with(".krdiff") { chunk_res } else { chunks_zip + "/" };
+                                    let chunk_base = if chunk_task.dest.ends_with(".krzip") || chunk_task.dest.ends_with(".krdiff") || chunk_task.dest.ends_with(".krpdiff") { chunk_res } else { chunks_zip + "/" };
 
                                     let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}{pn}").to_string()).await.unwrap();
                                     let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
@@ -285,6 +297,18 @@ impl Kuro for Game {
                         let stringed = diffp.to_str().unwrap().to_string();
                         let krd = krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
                         if krd.is_ok() {} else { eprintln!("Failed to apply krdiff!") }
+                        if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
+                    }
+                }
+                // Wuwa has krpdiffs apply them if they exist
+                if files.group_infos.is_some() {
+                    let diffs = files.group_infos.unwrap();
+                    for d in diffs {
+                        let staging = staging.clone();
+                        let diffp = staging.join(d.dest.clone());
+                        let stringed = diffp.to_str().unwrap().to_string();
+                        let krd = krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        if krd.is_ok() {} else { eprintln!("Failed to apply krpdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
@@ -334,13 +358,13 @@ impl Kuro for Game {
             let injector = Arc::new(Injector::<KuroResource>::new());
             let mut workers = Vec::new();
             let mut stealers_list = Vec::new();
-            for _ in 0..8 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
             let stealers = Arc::new(stealers_list);
             for task in files.resource.into_iter() { injector.push(task); }
-            let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
             // Spawn worker tasks
-            let mut handles = Vec::with_capacity(8);
+            let mut handles = Vec::with_capacity(6);
             for _i in 0..workers.len() {
                 let local_worker = workers.pop().unwrap();
                 let stealers = stealers.clone();
@@ -443,13 +467,13 @@ impl Kuro for Game {
             let injector = Arc::new(Injector::<KuroResource>::new());
             let mut workers = Vec::new();
             let mut stealers_list = Vec::new();
-            for _ in 0..8 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+            for _ in 0..6 { let w = Worker::<KuroResource>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
             let stealers = Arc::new(stealers_list);
             for task in files.resource.into_iter() { injector.push(task); }
-            let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
+            let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
             // Spawn worker tasks
-            let mut handles = Vec::with_capacity(8);
+            let mut handles = Vec::with_capacity(6);
             for _i in 0..workers.len() {
                 let local_worker = workers.pop().unwrap();
                 let stealers = stealers.clone();
@@ -493,7 +517,7 @@ impl Kuro for Game {
                                 }
 
                                 let pn = chunk_task.dest.clone();
-                                let chunk_base = if chunk_task.dest.ends_with(".krzip") || chunk_task.dest.ends_with(".krdiff") { chunk_res } else { chunks_zip + "/" };
+                                let chunk_base = if chunk_task.dest.ends_with(".krzip") || chunk_task.dest.ends_with(".krdiff") || chunk_task.dest.ends_with(".krpdiff") { chunk_res } else { chunks_zip + "/" };
 
                                 let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}{pn}").to_string()).await.unwrap();
                                 let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
