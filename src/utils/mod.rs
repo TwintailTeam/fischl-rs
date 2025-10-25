@@ -210,14 +210,14 @@ pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, pa
     }
 }
 
-pub fn krpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, source: T, patch: T) -> io::Result<()> {
+/*pub fn krpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, source: T, patch: T) -> io::Result<()> {
     let output = Command::new(bin_path.as_str()).arg("--verbose").arg("-i").arg(patch.into().as_os_str()).arg(source.into().as_os_str()).output()?;
 
     if String::from_utf8_lossy(output.stdout.as_slice()).contains("[INFO] Everything patched with success") { Ok(()) } else {
         let err = String::from_utf8_lossy(&output.stderr);
         Err(Error::other(format!("Failed to apply krdiff patch: {err}")))
     }
-}
+}*/
 
 pub fn seven_zip<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, output: T) -> io::Result<()> {
     let output = Command::new(bin_path.as_str()).arg("x").arg(format!("-o{}", output.into().to_str().unwrap())).arg(file.into().as_mut_os_str()).output()?;

@@ -15,7 +15,7 @@ pub trait Zipped {
 #[allow(async_fn_in_trait)]
 pub trait Kuro {
     async fn download<F>(manifest: String, base_url: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static;
-    async fn patch<F>(manifest: String, base_resources: String, base_zip: String, game_path: String, krpatchz_path: String, preloaded: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static;
+    async fn patch<F>(manifest: String, base_resources: String, base_zip: String, game_path: String, preloaded: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static;
     async fn repair_game<F>(manifest: String, base_url: String, game_path: String, is_fast: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static;
     async fn preload<F>(manifest: String, base_resources: String, base_zip: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static;
 }

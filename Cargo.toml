@@ -31,6 +31,9 @@ liblzma = {version = "0.4", features = ["static"], optional = true}
 zstd = {version = "0.13.3", optional = true}
 crossbeam-deque = {version = "0.8.6", optional = true}
 
+# patching lib
+hdiffpatch-rs = { git = "https://github.com/TwintailTeam/hdiffpatch-rs.git", branch = "master" }
+
 [features]
 compat = ["dep:wincompatlib"]
 download = ["dep:zip", "dep:tar", "dep:flate2", "dep:liblzma", "dep:zstd", "dep:chksum-md5", "dep:prost", "dep:crossbeam-deque"]

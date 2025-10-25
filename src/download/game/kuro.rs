@@ -3,10 +3,11 @@ use std::path::Path;
 use std::sync::{Arc};
 use std::sync::atomic::{AtomicU64, Ordering};
 use crossbeam_deque::{Injector, Steal, Worker};
+use hdiffpatch_rs::patchers::KrDiff;
 use tokio::io::{AsyncReadExt};
 use crate::download::game::{Game, Kuro};
 use crate::utils::downloader::{AsyncDownloader};
-use crate::utils::{extract_archive, krpatchz, move_all, validate_checksum, KuroIndex, KuroResource};
+use crate::utils::{extract_archive, move_all, validate_checksum, KuroIndex, KuroResource};
 
 impl Kuro for Game {
     async fn download<F>(manifest: String, base_url: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
@@ -107,7 +108,7 @@ impl Kuro for Game {
                                         progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         let processed = progress_counter.load(Ordering::SeqCst);
                                         progress_cb(processed, total_bytes);
-                                    } else { eprintln!("Failed to validate file with hash after retry!"); }
+                                    } else { eprintln!("Failed to download file {} after retry!", pn.clone()); }
                                 }
                                 drop(permit);
                             }
@@ -129,7 +130,7 @@ impl Kuro for Game {
         }
     }
 
-    async fn patch<F>(manifest: String, base_resources: String, base_zip: String, game_path: String, krpatchz_path: String, preloaded: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+    async fn patch<F>(manifest: String, base_resources: String, base_zip: String, game_path: String, preloaded: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || base_resources.is_empty() || base_zip.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str());
@@ -180,10 +181,12 @@ impl Kuro for Game {
                     let diffs = files.patch_infos.unwrap();
                     for d in diffs {
                         let staging = staging.clone();
+                        let stgs = staging.to_str().unwrap().to_string();
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
-                        let krd = krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
-                        if krd.is_ok() {
+                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
+                        let krd = krdiff.apply(); //krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        if krd {
                             let fsize = d.entries.iter().map(|f| f.size).sum();
                             progress_counter.fetch_add(fsize, Ordering::SeqCst);
                             let processed = progress_counter.load(Ordering::SeqCst);
@@ -197,10 +200,12 @@ impl Kuro for Game {
                     let diffs = files.group_infos.unwrap();
                     for d in diffs {
                         let staging = staging.clone();
+                        let stgs = staging.to_str().unwrap().to_string();
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
-                        let krd = krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
-                        if krd.is_ok() {} else { eprintln!("Failed to apply krpdiff!") }
+                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
+                        let krd = krdiff.apply(); //krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        if krd {} else { eprintln!("Failed to apply krpdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
@@ -289,7 +294,7 @@ impl Kuro for Game {
                                             progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                             let processed = progress_counter.load(Ordering::SeqCst);
                                             progress_cb(processed, total_bytes);
-                                        } else { eprintln!("Failed to validate patch file after retry!"); }
+                                        } else { eprintln!("Failed to validate patch file {} after retry!", pn.clone()); }
                                     }
                                     drop(permit);
                                 }
@@ -315,10 +320,12 @@ impl Kuro for Game {
                     let diffs = files.patch_infos.unwrap();
                     for d in diffs {
                         let staging = staging.clone();
+                        let stgs = staging.to_str().unwrap().to_string();
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
-                        let krd = krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
-                        if krd.is_ok() {} else { eprintln!("Failed to apply krdiff!") }
+                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
+                        let krd = krdiff.apply(); //krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        if krd {} else { eprintln!("Failed to apply krdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
@@ -327,10 +334,12 @@ impl Kuro for Game {
                     let diffs = files.group_infos.unwrap();
                     for d in diffs {
                         let staging = staging.clone();
+                        let stgs = staging.to_str().unwrap().to_string();
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
-                        let krd = krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
-                        if krd.is_ok() {} else { eprintln!("Failed to apply krpdiff!") }
+                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
+                        let krd = krdiff.apply(); //krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        if krd {} else { eprintln!("Failed to apply krpdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
@@ -446,7 +455,7 @@ impl Kuro for Game {
                                         progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         let processed = progress_counter.load(Ordering::SeqCst);
                                         progress_cb(processed, total_bytes);
-                                    } else { eprintln!("Failed to validate repair file after retry!"); }
+                                    } else { eprintln!("Failed to validate repair file {} after retry!", pn.clone()); }
                                 }
                                 drop(permit);
                             }
@@ -570,7 +579,7 @@ impl Kuro for Game {
                                         progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         let processed = progress_counter.load(Ordering::SeqCst);
                                         progress_cb(processed, total_bytes);
-                                    } else { eprintln!("Failed to validate preload file after retry!"); }
+                                    } else { eprintln!("Failed to validate preload file {} after retry!", pn.clone()); }
                                 }
                                 drop(permit);
                             }
