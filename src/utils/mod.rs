@@ -193,7 +193,7 @@ pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mu
             let apn = process.name().to_str().unwrap();
             let apns = apn.split(".").collect::<Vec<&str>>();
             let apnn = apns.first().unwrap();
-            apnn == pn
+            apnn.contains(pn)
         });
         if callback(found) { return found; }
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
