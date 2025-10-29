@@ -168,7 +168,7 @@ impl Sophon for Game {
                 let progress_counter = Arc::new(AtomicU64::new(0));
 
                 for file in decoded.files {
-                    let file = Arc::new(file.clone());
+                    let ff = Arc::new(file.clone());
                     let hpatchz_path = hpatchz_path.clone();
                     let output_path = staging.join(file.name.clone());
                     let valid = validate_checksum(output_path.as_path(), file.clone().md5.to_ascii_lowercase()).await;
@@ -215,14 +215,30 @@ impl Sophon for Game {
                                             output.flush().unwrap();
                                             drop(output);
                                         } else {
-                                            let mut output = fs::File::create(&output_path).unwrap();
                                             let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
-
                                             chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).unwrap();
-                                            let mut r = chunk_file.take(chunk.patch_length);
-                                            copy(&mut r, &mut output).unwrap();
-                                            output.flush().unwrap();
-                                            drop(output);
+                                            let mut r = vec![0u8; chunk.patch_length as usize];
+                                            chunk_file.read_exact(&mut r).unwrap();
+                                            let is_hdiff = r.starts_with(b"HDIFF13");
+
+                                            // nap edge case ffs
+                                            if is_hdiff {
+                                                let mut output = fs::File::create(&diffp).unwrap();
+                                                let mut cursor = Cursor::new(&r);
+                                                copy(&mut cursor, &mut output).unwrap();
+                                                output.flush().unwrap();
+                                                drop(output);
+
+                                                let of = mainp.join(&ff.name.clone());
+                                                if !of.exists() { fs::File::create(&of).unwrap(); }
+                                                if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
+                                            } else {
+                                                let mut output = fs::File::create(&output_path).unwrap();
+                                                let mut cursor = Cursor::new(&r);
+                                                copy(&mut cursor, &mut output).unwrap();
+                                                output.flush().unwrap();
+                                                drop(output);
+                                            }
                                         }
                                     } else {
                                         // Chunk is hdiff patchable, patch it
@@ -284,14 +300,38 @@ impl Sophon for Game {
                                                 output.flush().unwrap();
                                                 drop(output);
                                             } else {
-                                                let mut output = fs::File::create(&output_path).unwrap();
+                                                let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
+                                                chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).unwrap();
+                                                let mut r = vec![0u8; chunk.patch_length as usize];
+                                                chunk_file.read_exact(&mut r).unwrap();
+                                                let is_hdiff = r.starts_with(b"HDIFF13");
+
+                                                // nap edge case ffs
+                                                if is_hdiff {
+                                                    let mut output = fs::File::create(&diffp).unwrap();
+                                                    let mut cursor = Cursor::new(&r);
+                                                    copy(&mut cursor, &mut output).unwrap();
+                                                    output.flush().unwrap();
+                                                    drop(output);
+
+                                                    let of = mainp.join(&ff.name.clone());
+                                                    if !of.exists() { fs::File::create(&of).unwrap(); }
+                                                    if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
+                                                } else {
+                                                    let mut output = fs::File::create(&output_path).unwrap();
+                                                    let mut cursor = Cursor::new(&r);
+                                                    copy(&mut cursor, &mut output).unwrap();
+                                                    output.flush().unwrap();
+                                                    drop(output);
+                                                }
+                                                /*let mut output = fs::File::create(&output_path).unwrap();
                                                 let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
 
                                                 chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).unwrap();
                                                 let mut r = chunk_file.take(chunk.patch_length);
                                                 copy(&mut r, &mut output).unwrap();
                                                 output.flush().unwrap();
-                                                drop(output);
+                                                drop(output);*/
                                             }
                                         } else {
                                             // Chunk is hdiff patchable, patch it
