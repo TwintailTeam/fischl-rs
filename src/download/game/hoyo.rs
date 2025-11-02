@@ -4,15 +4,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc};
 use std::sync::atomic::{AtomicU64, Ordering};
 use crossbeam_deque::{Injector, Steal, Worker};
-use futures_util::stream::FuturesUnordered;
-use futures_util::StreamExt;
 use prost::Message;
 use reqwest_middleware::ClientWithMiddleware;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use crate::download::game::{Game, Sophon};
 use crate::utils::{hpatchz, move_all, validate_checksum};
 use crate::utils::downloader::{AsyncDownloader};
-use crate::utils::proto::{DeleteFiles, ManifestFile, PatchChunk, PatchFile, SophonDiff, SophonManifest};
+use crate::utils::proto::{DeleteFiles, FileChunk, ManifestFile, PatchChunk, PatchFile, SophonDiff, SophonManifest};
 
 impl Sophon for Game {
     async fn download<F>(manifest: String, chunk_base: String, game_path: String, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
@@ -61,13 +59,13 @@ impl Sophon for Game {
                 let injector = Arc::new(Injector::<ManifestFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..8 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..6 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in decoded.files.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(8);
+                let mut handles = Vec::with_capacity(6);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -324,14 +322,6 @@ impl Sophon for Game {
                                                     output.flush().unwrap();
                                                     drop(output);
                                                 }
-                                                /*let mut output = fs::File::create(&output_path).unwrap();
-                                                let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
-
-                                                chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).unwrap();
-                                                let mut r = chunk_file.take(chunk.patch_length);
-                                                copy(&mut r, &mut output).unwrap();
-                                                output.flush().unwrap();
-                                                drop(output);*/
                                             }
                                         } else {
                                             // Chunk is hdiff patchable, patch it
@@ -435,7 +425,7 @@ impl Sophon for Game {
                 let chunks = p.join("chunk");
 
                 if !chunks.exists() { fs::create_dir_all(chunks.clone()).unwrap(); }
-                let decoded = tokio::task::spawn_blocking(move || { SophonManifest::decode(&mut std::io::Cursor::new(&file_contents)).unwrap() }).await.unwrap();
+                let decoded = tokio::task::spawn_blocking(move || { SophonManifest::decode(&mut Cursor::new(&file_contents)).unwrap() }).await.unwrap();
 
                 let total_bytes: u64 = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.size).sum();
                 let progress_counter = Arc::new(AtomicU64::new(0));
@@ -445,13 +435,13 @@ impl Sophon for Game {
                 let injector = Arc::new(Injector::<ManifestFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
-                for _ in 0..8 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+                for _ in 0..6 { let w = Worker::<ManifestFile>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
                 let stealers = Arc::new(stealers_list);
                 for task in decoded.files.into_iter() { injector.push(task); }
-                let file_sem = Arc::new(tokio::sync::Semaphore::new(8));
+                let file_sem = Arc::new(tokio::sync::Semaphore::new(6));
 
                 // Spawn worker tasks
-                let mut handles = Vec::with_capacity(8);
+                let mut handles = Vec::with_capacity(6);
                 for _i in 0..workers.len() {
                     let local_worker = workers.pop().unwrap();
                     let stealers = stealers.clone();
@@ -654,48 +644,107 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
 
     let file = tokio::fs::OpenOptions::new().create(true).write(true).open(&fp).await.unwrap();
     file.set_len(chunk_task.size).await.unwrap();
-    let writer = tokio::sync::Mutex::new(tokio::io::BufWriter::new(file));
-    let csem = Arc::new(tokio::sync::Semaphore::new(200));
+    let (write_tx, mut write_rx) = tokio::sync::mpsc::channel::<(Vec<u8>, u64)>(300);
 
-    let mut chunk_futures = FuturesUnordered::new();
-    for c in chunk_task.chunks.clone() {
-        let chunk_path = chunks_dir.join(&c.chunk_name);
+    let writer_handle = tokio::spawn({
+        async move {
+            let mut writer = tokio::io::BufWriter::with_capacity(10240, file);
+            while let Some((buf, offset)) = write_rx.recv().await {
+                writer.seek(SeekFrom::Start(offset)).await.unwrap();
+                writer.write_all(&buf).await.unwrap();
+            }
+            writer.flush().await.unwrap();
+            drop(writer);
+        }
+    });
+
+    let injector = Arc::new(Injector::<FileChunk>::new());
+    let mut workers = Vec::new();
+    let mut stealers_list = Vec::new();
+    for _ in 0..60 { let w = Worker::<FileChunk>::new_fifo();stealers_list.push(w.stealer());workers.push(w); }
+    let stealers = Arc::new(stealers_list);
+    for task in chunk_task.chunks.into_iter() { injector.push(task); }
+
+    // Spawn worker tasks
+    let mut handles = Vec::with_capacity(60);
+    for _i in 0..workers.len() {
+        let local_worker = workers.pop().unwrap();
+        let stealers = stealers.clone();
+        let injector = injector.clone();
+        let write_tx = write_tx.clone();
+
+        let chunks_dir = chunks_dir.clone();
+        let stealers = stealers.clone();
         let client = Arc::clone(&client);
         let chunk_base = chunk_base.clone();
-        let sem = csem.clone();
 
-        chunk_futures.push(async move {
-            let mut dl = AsyncDownloader::new(client, format!("{}/{}", chunk_base, c.chunk_name)).await.unwrap();
-            let dl_result = dl.download(chunk_path.clone(), |_, _| {}).await;
+        let mut retry_tasks = Vec::new();
+        let handle = tokio::task::spawn(async move {
+            loop {
+                let job = local_worker.pop().or_else(|| injector.steal().success()).or_else(|| {
+                    for s in stealers.iter() { if let Steal::Success(t) = s.steal() { return Some(t); } }
+                    None
+                });
+                let Some(c) = job else { break; };
 
-            if dl_result.is_ok() {
-                let valid = validate_checksum(chunk_path.as_path(), c.chunk_md5.to_ascii_lowercase()).await;
-                if valid && chunk_path.exists() {
-                    let p = sem.acquire_owned().await.unwrap();
-                    let buffer = tokio::task::spawn_blocking(move || {
-                        let file = fs::File::open(&chunk_path).unwrap();
-                        let mut reader = BufReader::with_capacity(512 * 1024, file);
-                        let mut decoder = zstd::Decoder::new(&mut reader).unwrap();
-                        let mut buf = Vec::with_capacity(c.chunk_decompressed_size as usize);
-                        copy(&mut decoder, &mut buf).unwrap();
-                        buf
-                    }).await.unwrap();
-                    drop(p);
-                    return Some((buffer, c.chunk_on_file_offset));
-                }
+                let ct = tokio::spawn({
+                    let chunk_path = chunks_dir.join(&c.chunk_name);
+                    let chunk_base = chunk_base.clone();
+                    let client = client.clone();
+                    let write_tx = write_tx.clone();
+                    async move {
+                        let mut dl = AsyncDownloader::new(client, format!("{}/{}", chunk_base, c.chunk_name)).await.unwrap();
+                        let dl_result = dl.download(chunk_path.clone(), |_, _| {}).await;
+                        if dl_result.is_ok() {
+                            let valid = validate_checksum(chunk_path.as_path(), c.chunk_md5.to_ascii_lowercase()).await;
+                            if valid && chunk_path.exists() {
+                                let file = fs::File::open(&chunk_path).unwrap();
+                                let mut reader = BufReader::with_capacity(10240, file);
+                                let mut decoder = zstd::Decoder::new(&mut reader).unwrap();
+                                let mut buf = Vec::with_capacity(c.chunk_decompressed_size as usize);
+                                std::io::copy(&mut decoder, &mut buf).unwrap();
+                                write_tx.send((buf, c.chunk_on_file_offset)).await.unwrap();
+                            }
+                        } else {
+                            // Retry the chunk
+                            let dl_result2 = dl.download(chunk_path.clone(), |_, _| {}).await;
+                            if dl_result2.is_ok() {
+                                let valid = validate_checksum(chunk_path.as_path(), c.chunk_md5.to_ascii_lowercase()).await;
+                                if valid && chunk_path.exists() {
+                                    let file = fs::File::open(&chunk_path).unwrap();
+                                    let mut reader = BufReader::with_capacity(10240, file);
+                                    let mut decoder = zstd::Decoder::new(&mut reader).unwrap();
+                                    let mut buf = Vec::with_capacity(c.chunk_decompressed_size as usize);
+                                    std::io::copy(&mut decoder, &mut buf).unwrap();
+                                    write_tx.send((buf, c.chunk_on_file_offset)).await.unwrap();
+                                }
+                            } else {
+                                // Retry again cuz CDN loves to spit random decode errors
+                                let dl_result3 = dl.download(chunk_path.clone(), |_, _| {}).await;
+                                if dl_result3.is_ok() {
+                                    let valid = validate_checksum(chunk_path.as_path(), c.chunk_md5.to_ascii_lowercase()).await;
+                                    if valid && chunk_path.exists() {
+                                        let file = fs::File::open(&chunk_path).unwrap();
+                                        let mut reader = BufReader::with_capacity(10240, file);
+                                        let mut decoder = zstd::Decoder::new(&mut reader).unwrap();
+                                        let mut buf = Vec::with_capacity(c.chunk_decompressed_size as usize);
+                                        std::io::copy(&mut decoder, &mut buf).unwrap();
+                                        write_tx.send((buf, c.chunk_on_file_offset)).await.unwrap();
+                                    }
+                                } else { eprintln!("Download of chunk {}/{} failed 3 times with error {}", chunk_base, c.chunk_name, dl_result2.unwrap_err().to_string()); }
+                            }
+                        }
+                    }
+                }); // end task
+                retry_tasks.push(ct);
             }
-            None
+            for t in retry_tasks { t.await.unwrap(); }
         });
+        handles.push(handle);
     }
-    let mut writer = writer.lock().await;
-    while let Some(opt) = chunk_futures.next().await {
-        if let Some((buffer, offset)) = opt {
-            writer.seek(SeekFrom::Start(offset)).await.unwrap();
-            writer.write_all(&buffer).await.unwrap();
-        }
-    }
-    writer.flush().await.unwrap();
-    drop(writer);
+    drop(write_tx);
+    for handle in handles { handle.await.unwrap(); }
+    writer_handle.await.unwrap();
 }
 
 async fn validate_file<F>(chunk_task: ManifestFile, chunk_base: String, chunks_dir: PathBuf, staging_dir: PathBuf, fp: PathBuf, client: Arc<ClientWithMiddleware>, progress_counter: Arc<AtomicU64>, progress_cb: Arc<F>, total_bytes: u64, is_fast: bool) where F: Fn(u64, u64) + Send + Sync + 'static {

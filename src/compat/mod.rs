@@ -1,5 +1,8 @@
+#[cfg(feature = "compat")]
 use std::path::PathBuf;
+#[cfg(feature = "compat")]
 use crate::utils::downloader::Downloader;
+#[cfg(feature = "compat")]
 use crate::utils::extract_archive;
 #[cfg(feature = "compat")]
 use wincompatlib::wine::Wine;

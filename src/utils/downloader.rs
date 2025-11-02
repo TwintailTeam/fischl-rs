@@ -59,7 +59,7 @@ pub struct AsyncDownloader {
 impl AsyncDownloader {
     pub async fn setup_client() -> ClientWithMiddleware {
         let retry_policy = ExponentialBackoff::builder().build_with_max_retries(30);
-        let c = reqwest::Client::builder().use_native_tls().build().unwrap();
+        let c = reqwest::Client::builder().use_native_tls().no_brotli().no_gzip().no_deflate().no_zstd().build().unwrap();
         reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build()
     }
 
@@ -226,7 +226,8 @@ impl Downloader {
     pub fn new<T: AsRef<str>>(uri: T) -> Result<Self, reqwest::Error> {
         let uri = uri.as_ref();
 
-        let client = reqwest::blocking::Client::builder().use_native_tls().build()?;
+        // Accepting invalid certs should mitigate random ssl bullshit errors... that happen once in blue moon
+        let client = reqwest::blocking::Client::builder().use_native_tls().danger_accept_invalid_certs(true).build()?;
         let header = client.head(uri).header(USER_AGENT, "lib/fischl-rs").send()?;
         let length = header.headers().get("content-length").map(|len| len.to_str().unwrap().parse().expect("Requested site's content-length is not a number"));
 
@@ -340,7 +341,7 @@ impl Downloader {
         // Download data
         match file {
             Ok(mut file) => {
-                let client = reqwest::blocking::Client::builder().use_native_tls().build()?;
+                let client = reqwest::blocking::Client::builder().use_native_tls().danger_accept_invalid_certs(true).build()?;
                 let request = client.head(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send()?;
 
                 // Request content range (downloaded + remained content size)

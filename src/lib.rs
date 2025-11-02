@@ -159,8 +159,7 @@ mod tests {
         let chunk_zip = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/zip";
 
         let path = "/games/kuro/wuwa_global/testing";
-        let krdiffbin = "/home/tukan/Desktop/Programming/rust/workspace/KeqingLauncher/src-tauri/resources/krpatchz".to_string();
-        let rep = <Game as Kuro>::patch(manifest.to_string(), chunk_res.to_string(), chunk_zip.to_string(), path.parse().unwrap(), krdiffbin, false, |current,total| {
+        let rep = <Game as Kuro>::patch(manifest.to_string(), chunk_res.to_string(), chunk_zip.to_string(), path.parse().unwrap(), false, |current,total| {
             println!("current: {}, total: {}", current, total);
         }).await;
         if rep {
