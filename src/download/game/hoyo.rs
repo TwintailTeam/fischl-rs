@@ -228,8 +228,8 @@ impl Sophon for Game {
                                                 drop(output);
 
                                                 let of = mainp.join(&ff.name.clone());
-                                                if !of.exists() { fs::File::create(&of).unwrap(); }
-                                                if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
+                                                if !of.exists() { let f = fs::File::create(&of).unwrap(); f.set_len(ff.size.clone()).unwrap(); }
+                                                if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz without original_filename (has preload) with error: {}", e);}
                                             } else {
                                                 let mut output = fs::File::create(&output_path).unwrap();
                                                 let mut cursor = Cursor::new(&r);
@@ -313,8 +313,8 @@ impl Sophon for Game {
                                                     drop(output);
 
                                                     let of = mainp.join(&ff.name.clone());
-                                                    if !of.exists() { fs::File::create(&of).unwrap(); }
-                                                    if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
+                                                    if !of.exists() { let f = fs::File::create(&of).unwrap(); f.set_len(ff.size.clone()).unwrap(); }
+                                                    if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz without original_filename (no preload) with error: {}", e);}
                                                 } else {
                                                     let mut output = fs::File::create(&output_path).unwrap();
                                                     let mut cursor = Cursor::new(&r);

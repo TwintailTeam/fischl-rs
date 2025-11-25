@@ -108,7 +108,18 @@ impl Kuro for Game {
                                         progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         let processed = progress_counter.load(Ordering::SeqCst);
                                         progress_cb(processed, total_bytes);
-                                    } else { eprintln!("Failed to download file {} after retry!", pn.clone()); }
+                                    } else {
+                                        // Retry 2nd time
+                                        let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
+                                        let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
+                                        let cvalid = validate_checksum(staging_dir.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+
+                                        if dlf.is_ok() && cvalid {
+                                            progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                            let processed = progress_counter.load(Ordering::SeqCst);
+                                            progress_cb(processed, total_bytes);
+                                        } else { eprintln!("Failed to download file {} after 2 retries!", pn.clone()); }
+                                    }
                                 }
                                 drop(permit);
                             }
@@ -294,7 +305,18 @@ impl Kuro for Game {
                                             progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                             let processed = progress_counter.load(Ordering::SeqCst);
                                             progress_cb(processed, total_bytes);
-                                        } else { eprintln!("Failed to validate patch file {} after retry!", pn.clone()); }
+                                        } else {
+                                            // Retry 2nd time
+                                            let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}{pn}").to_string()).await.unwrap();
+                                            let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
+                                            let cvalid = validate_checksum(staging_dir.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+
+                                            if dlf.is_ok() && cvalid {
+                                                progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                                let processed = progress_counter.load(Ordering::SeqCst);
+                                                progress_cb(processed, total_bytes);
+                                            } else { eprintln!("Failed to validate patch file {} after 2 retries!", pn.clone()); }
+                                        }
                                     }
                                     drop(permit);
                                 }
@@ -455,7 +477,18 @@ impl Kuro for Game {
                                         progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         let processed = progress_counter.load(Ordering::SeqCst);
                                         progress_cb(processed, total_bytes);
-                                    } else { eprintln!("Failed to validate repair file {} after retry!", pn.clone()); }
+                                    } else {
+                                        // Retry 2nd time
+                                        let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
+                                        let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
+                                        let cvalid = if is_fast { staging_dir.metadata().unwrap().len() == chunk_task.size } else { validate_checksum(staging_dir.as_path(), chunk_task.md5.to_ascii_lowercase()).await };
+
+                                        if dlf.is_ok() && cvalid {
+                                            progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                            let processed = progress_counter.load(Ordering::SeqCst);
+                                            progress_cb(processed, total_bytes);
+                                        } else { eprintln!("Failed to validate repair file {} after 2 retries!", pn.clone()); }
+                                    }
                                 }
                                 drop(permit);
                             }
@@ -579,7 +612,18 @@ impl Kuro for Game {
                                         progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         let processed = progress_counter.load(Ordering::SeqCst);
                                         progress_cb(processed, total_bytes);
-                                    } else { eprintln!("Failed to validate preload file {} after retry!", pn.clone()); }
+                                    } else {
+                                        // Retry again
+                                        let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}{pn}").to_string()).await.unwrap();
+                                        let dlf = dl.download(staging_dir.clone(), |_, _| {}).await;
+                                        let cvalid = validate_checksum(staging_dir.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+
+                                        if dlf.is_ok() && cvalid {
+                                            progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                            let processed = progress_counter.load(Ordering::SeqCst);
+                                            progress_cb(processed, total_bytes);
+                                        } else { eprintln!("Failed to validate preload file {} after 2 retries!", pn.clone()); }
+                                    }
                                 }
                                 drop(permit);
                             }

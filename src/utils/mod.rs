@@ -210,15 +210,6 @@ pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, pa
     }
 }
 
-/*pub fn krpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, source: T, patch: T) -> io::Result<()> {
-    let output = Command::new(bin_path.as_str()).arg("--verbose").arg("-i").arg(patch.into().as_os_str()).arg(source.into().as_os_str()).output()?;
-
-    if String::from_utf8_lossy(output.stdout.as_slice()).contains("[INFO] Everything patched with success") { Ok(()) } else {
-        let err = String::from_utf8_lossy(&output.stderr);
-        Err(Error::other(format!("Failed to apply krdiff patch: {err}")))
-    }
-}*/
-
 pub fn seven_zip<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, output: T) -> io::Result<()> {
     let output = Command::new(bin_path.as_str()).arg("x").arg(format!("-o{}", output.into().to_str().unwrap())).arg(file.into().as_mut_os_str()).output()?;
 
@@ -253,13 +244,13 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
             let archive = fs::File::open(archive_path).unwrap();
             let decompressor = flate2::read::GzDecoder::new(archive);
             let mut archive = tar::Archive::new(decompressor);
-            archive.unpack(dest).unwrap();
+            archive.unpack(dest).unwrap_or(());
         },
         "tar.xz" => {
             let file = fs::File::open(&archive_path).unwrap();
             let decompressor = liblzma::read::XzDecoder::new(file);
             let mut archive = tar::Archive::new(decompressor);
-            archive.unpack(dest).unwrap();
+            archive.unpack(dest).unwrap_or(());
         }
         "7z" => {
             seven_zip(sevenz_bin, archive_path.clone(), dest).unwrap();
