@@ -124,7 +124,7 @@ impl Sophon for Game {
         }
     }
 
-    async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, hpatchz_path: String, preloaded: bool, compression: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
+    async fn patch<F>(manifest: String, version: String, chunk_base: String, game_path: String, hpatchz_path: String, preloaded: bool, progress: F) -> bool where F: Fn(u64, u64) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str()).to_path_buf();
@@ -197,22 +197,62 @@ impl Sophon for Game {
                                 if r {
                                     if chunk.original_filename.is_empty() {
                                         // Chunk is not a hdiff patchable, copy it over
-                                        if compression {
-                                            let mut output = fs::File::create(&output_path).unwrap();
-                                            let chunk_file = fs::File::open(chunkp.as_path()).unwrap();
+                                        let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
+                                        chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).unwrap();
+                                        let mut r = vec![0u8; chunk.patch_length as usize];
+                                        chunk_file.read_exact(&mut r).unwrap();
+                                        let is_hdiff = r.starts_with(b"HDIFF13");
 
-                                            let reader = BufReader::with_capacity(512 * 1024, chunk_file);
-                                            let mut decoder = zstd::stream::Decoder::new(reader).unwrap();
-                                            let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
-                                            copy(&mut decoder, &mut buffer).unwrap();
-                                            let mut cursor = Cursor::new(buffer);
-
-                                            std::io::Seek::seek(&mut cursor, SeekFrom::Start(chunk.patch_offset)).unwrap();
-                                            let mut r = cursor.take(chunk.patch_length);
-                                            copy(&mut r, &mut output).unwrap();
+                                        // nap edge case ffs
+                                        if is_hdiff {
+                                            let mut output = fs::File::create(&diffp).unwrap();
+                                            let mut cursor = Cursor::new(&r);
+                                            copy(&mut cursor, &mut output).unwrap();
                                             output.flush().unwrap();
                                             drop(output);
+
+                                            let of = mainp.join(&ff.name.clone());
+                                            if !of.exists() {
+                                                fs::File::create(&of).unwrap();
+                                            } else {
+                                                let r = fs::remove_file(&of);
+                                                match r {
+                                                    Ok(_) => { fs::File::create(&of).unwrap(); }
+                                                    Err(_) => {}
+                                                }
+                                            }
+                                            if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz without original_filename (has preload) with error: {}", e);}
                                         } else {
+                                            let mut output = fs::File::create(&output_path).unwrap();
+                                            let mut cursor = Cursor::new(&r);
+                                            copy(&mut cursor, &mut output).unwrap();
+                                            output.flush().unwrap();
+                                            drop(output);
+                                        }
+                                    } else {
+                                        // Chunk is hdiff patchable, patch it
+                                        let mut output = fs::File::create(&diffp).unwrap();
+                                        let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
+
+                                        chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).unwrap();
+                                        let mut r = chunk_file.take(chunk.patch_length);
+                                        copy(&mut r, &mut output).unwrap();
+                                        output.flush().unwrap();
+                                        drop(output);
+
+                                        let of = mainp.join(&chunk.original_filename);
+                                        if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e); }
+                                    }
+                                } else { continue; }
+                            } else {
+                                let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
+                                let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
+
+                                if dlf.is_ok() && chunkp.exists() {
+                                    let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
+                                    if r {
+                                        if chunk.original_filename.is_empty() {
+                                            // Chunk is not a hdiff patchable, copy it over
                                             let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
                                             chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).unwrap();
                                             let mut r = vec![0u8; chunk.patch_length as usize];
@@ -228,8 +268,16 @@ impl Sophon for Game {
                                                 drop(output);
 
                                                 let of = mainp.join(&ff.name.clone());
-                                                if !of.exists() { let f = fs::File::create(&of).unwrap(); f.set_len(ff.size.clone()).unwrap(); }
-                                                if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz without original_filename (has preload) with error: {}", e);}
+                                                if !of.exists() {
+                                                    fs::File::create(&of).unwrap();
+                                                } else {
+                                                    let r = fs::remove_file(&of);
+                                                    match r {
+                                                        Ok(_) => { fs::File::create(&of).unwrap(); }
+                                                        Err(_) => {}
+                                                    }
+                                                }
+                                                if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz without original_filename (no preload) with error: {}", e);}
                                             } else {
                                                 let mut output = fs::File::create(&output_path).unwrap();
                                                 let mut cursor = Cursor::new(&r);
@@ -237,28 +285,8 @@ impl Sophon for Game {
                                                 output.flush().unwrap();
                                                 drop(output);
                                             }
-                                        }
-                                    } else {
-                                        // Chunk is hdiff patchable, patch it
-                                        if compression {
-                                            let mut output = fs::File::create(&diffp).unwrap();
-                                            let chunk_file = fs::File::open(chunkp.as_path()).unwrap();
-
-                                            let reader = BufReader::with_capacity(512 * 1024, chunk_file);
-                                            let mut decoder = zstd::stream::Decoder::new(reader).unwrap();
-                                            let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
-                                            copy(&mut decoder, &mut buffer).unwrap();
-                                            let mut cursor = Cursor::new(buffer);
-
-                                            std::io::Seek::seek(&mut cursor, SeekFrom::Start(chunk.patch_offset)).unwrap();
-                                            let mut r = cursor.take(chunk.patch_length);
-                                            copy(&mut r, &mut output).unwrap();
-                                            output.flush().unwrap();
-                                            drop(output);
-
-                                            let of = mainp.join(&chunk.original_filename);
-                                            if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
                                         } else {
+                                            // Chunk is hdiff patchable, patch it
                                             let mut output = fs::File::create(&diffp).unwrap();
                                             let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
 
@@ -269,93 +297,7 @@ impl Sophon for Game {
                                             drop(output);
 
                                             let of = mainp.join(&chunk.original_filename);
-                                            if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
-                                        }
-                                    }
-                                } else { continue; }
-                            } else {
-                                let mut dl = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}").to_string()).await.unwrap();
-                                let dlf = dl.download(chunkp.clone(), |_, _| {}).await;
-
-                                if dlf.is_ok() && chunkp.exists() {
-                                    let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
-                                    if r {
-                                        if chunk.original_filename.is_empty() {
-                                            // Chunk is not a hdiff patchable, copy it over
-                                            if compression {
-                                                let mut output = fs::File::create(&output_path).unwrap();
-                                                let chunk_file = fs::File::open(chunkp.as_path()).unwrap();
-
-                                                let reader = BufReader::with_capacity(512 * 1024, chunk_file);
-                                                let mut decoder = zstd::stream::Decoder::new(reader).unwrap();
-                                                let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
-                                                copy(&mut decoder, &mut buffer).unwrap();
-                                                let mut cursor = Cursor::new(buffer);
-
-                                                std::io::Seek::seek(&mut cursor, SeekFrom::Start(chunk.patch_offset)).unwrap();
-                                                let mut r = cursor.take(chunk.patch_length);
-                                                copy(&mut r, &mut output).unwrap();
-                                                output.flush().unwrap();
-                                                drop(output);
-                                            } else {
-                                                let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
-                                                chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).unwrap();
-                                                let mut r = vec![0u8; chunk.patch_length as usize];
-                                                chunk_file.read_exact(&mut r).unwrap();
-                                                let is_hdiff = r.starts_with(b"HDIFF13");
-
-                                                // nap edge case ffs
-                                                if is_hdiff {
-                                                    let mut output = fs::File::create(&diffp).unwrap();
-                                                    let mut cursor = Cursor::new(&r);
-                                                    copy(&mut cursor, &mut output).unwrap();
-                                                    output.flush().unwrap();
-                                                    drop(output);
-
-                                                    let of = mainp.join(&ff.name.clone());
-                                                    if !of.exists() { let f = fs::File::create(&of).unwrap(); f.set_len(ff.size.clone()).unwrap(); }
-                                                    if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz without original_filename (no preload) with error: {}", e);}
-                                                } else {
-                                                    let mut output = fs::File::create(&output_path).unwrap();
-                                                    let mut cursor = Cursor::new(&r);
-                                                    copy(&mut cursor, &mut output).unwrap();
-                                                    output.flush().unwrap();
-                                                    drop(output);
-                                                }
-                                            }
-                                        } else {
-                                            // Chunk is hdiff patchable, patch it
-                                            if compression {
-                                                let mut output = fs::File::create(&diffp).unwrap();
-                                                let chunk_file = fs::File::open(chunkp.as_path()).unwrap();
-
-                                                let reader = BufReader::with_capacity(512 * 1024, chunk_file);
-                                                let mut decoder = zstd::stream::Decoder::new(reader).unwrap();
-                                                let mut buffer = Vec::with_capacity(chunk.patch_size as usize);
-                                                copy(&mut decoder, &mut buffer).unwrap();
-                                                let mut cursor = Cursor::new(buffer);
-
-                                                std::io::Seek::seek(&mut cursor, SeekFrom::Start(chunk.patch_offset)).unwrap();
-                                                let mut r = cursor.take(chunk.patch_length);
-                                                copy(&mut r, &mut output).unwrap();
-                                                output.flush().unwrap();
-                                                drop(output);
-
-                                                let of = mainp.join(&chunk.original_filename);
-                                                if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
-                                            } else {
-                                                let mut output = fs::File::create(&diffp).unwrap();
-                                                let mut chunk_file = fs::File::open(chunkp.as_path()).unwrap();
-
-                                                chunk_file.seek(SeekFrom::Start(chunk.patch_offset)).unwrap();
-                                                let mut r = chunk_file.take(chunk.patch_length);
-                                                copy(&mut r, &mut output).unwrap();
-                                                output.flush().unwrap();
-                                                drop(output);
-
-                                                let of = mainp.join(&chunk.original_filename);
-                                                if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e);}
-                                            }
+                                            if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e); }
                                         }
                                     } else { continue; }
                                 }
