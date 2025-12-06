@@ -1,34 +1,37 @@
 use std::fs;
 use std::ops::Add;
 use std::path::Path;
+use std::sync::Arc;
 use wincompatlib::prelude::{WineBootExt, WineWithExt};
 use wincompatlib::wine::{Wine, WineArch};
 use crate::compat::Compat;
-use crate::utils::downloader::Downloader;
+use crate::utils::downloader::{AsyncDownloader};
 use crate::utils::{extract_archive, get_full_extension};
 
 #[cfg(feature = "compat")]
 impl Compat {
-    pub fn download_runner(url: String, dest: String, extract: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+    pub async fn download_runner(url: String, dest: String, extract: bool, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
-            let mut downloader = Downloader::new(url).unwrap();
-            let fin = downloader.get_filename();
-            let ext = get_full_extension(fin).unwrap();
-            let name = String::from("runner.").add(ext);
-            let dp = d.to_path_buf().join(name.as_str());
-            let dl = downloader.download(dp.clone(), progress);
+            let c = AsyncDownloader::setup_client().await;
+            let dl = AsyncDownloader::new(Arc::new(c), url).await;
             if dl.is_ok() {
-                if extract {
-                    let r = extract_archive("".to_string(), dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true);
-                    r
-                } else {
-                    dl.is_ok()
-                }
+                let mut dll = dl.unwrap();
+                let fin = dll.get_filename().await;
+                let ext = get_full_extension(fin).unwrap();
+                let name = String::from("runner.").add(ext);
+                let dp = d.to_path_buf().join(name.as_str());
+                let dla = dll.download(dp.clone(), progress).await;
+                if dla.is_ok() {
+                    if extract { extract_archive("".to_string(), dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true); true } else { true }
+                } else { false }
             } else { false }
         } else {
-            fs::create_dir_all(d).unwrap();
-            false
+            let r = fs::create_dir_all(d);
+            match r {
+                Ok(_) => { false }
+                Err(_) => { false }
+            }
         }
     }
 

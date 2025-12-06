@@ -111,7 +111,7 @@ impl AsyncDownloader {
         "index.html"
     }
 
-    pub async fn download(&mut self, path: impl Into<PathBuf>, progress: impl Fn(u64, u64) + Send + 'static) -> Result<(), DownloadingError> {
+    pub async fn download(&mut self, path: impl Into<PathBuf>, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> Result<(), DownloadingError> {
         let path = path.into();
         let mut downloaded = 0;
 
@@ -207,13 +207,13 @@ impl AsyncDownloader {
                     let data = chunk?;
                     file.write_all(&data).await.unwrap();
                     downloaded += data.len();
+                    progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
                 }
 
                 if let Err(err) = file.flush().await {
                     return Err(DownloadingError::OutputFileError(path, err.to_string()));
                 }
                 drop(file);
-                progress(downloaded as u64, self.length.unwrap_or(downloaded as u64));
                 Ok(())
             }
             Err(err) => Err(DownloadingError::OutputFileError(path, err.to_string()))

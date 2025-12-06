@@ -19,7 +19,7 @@ pub struct Compat {
 }
 
 #[cfg(feature = "compat")]
-pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, branch: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, branch: String, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool {
     if !path.exists() || edition.is_empty() || branch.is_empty() { false } else {
         let code = if edition.as_str() == "steamrt3" { "sniper" } else { "4" };
         let url = format!("https://repo.steampowered.com/{edition}/images/{branch}/SteamLinuxRuntime_{code}.tar.xz");
