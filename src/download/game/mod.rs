@@ -6,10 +6,11 @@ pub mod kuro;
 pub mod zipped;
 
 pub struct Game;
+#[allow(async_fn_in_trait)]
 pub trait Zipped {
-    fn download(urls: Vec<String>, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool;
-    fn patch(url: String, game_path: String, progress: impl Fn(u64, u64) + Send + 'static) -> bool;
-    fn repair_game(res_list: String, game_path: String, is_fast: bool, progress: impl Fn(u64, u64) + Send + 'static) -> bool;
+    async fn download(urls: Vec<String>, game_path: String, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool;
+    async fn patch(url: String, game_path: String, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool;
+    async fn repair_game(res_list: String, game_path: String, is_fast: bool, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool;
 }
 
 #[allow(async_fn_in_trait)]
