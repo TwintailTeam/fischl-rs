@@ -1,6 +1,5 @@
 #[cfg(feature = "compat")]
 use std::path::PathBuf;
-use std::sync::Arc;
 #[cfg(feature = "compat")]
 use crate::utils::downloader::AsyncDownloader;
 #[cfg(feature = "compat")]
@@ -24,7 +23,7 @@ pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, bra
         let code = if edition.as_str() == "steamrt3" { "sniper" } else { "4" };
         let url = format!("https://repo.steampowered.com/{edition}/images/{branch}/SteamLinuxRuntime_{code}.tar.xz");
         let cl = AsyncDownloader::setup_client().await;
-        let dl = AsyncDownloader::new(Arc::new(cl), url).await;
+        let dl = AsyncDownloader::new(std::sync::Arc::new(cl), url).await;
         if dl.is_ok() {
             let mut d = dl.unwrap();
             let p = path.join("steamrt.tar.xz");

@@ -10,12 +10,12 @@ mod tests {
     use crate::download::game::{Game, Kuro, Sophon, Zipped};
     use crate::utils::{extract_archive, prettify_bytes};
 
-    #[test]
-    fn download_xxmi_test() {
+    #[tokio::test]
+    async fn download_xxmi_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/xxmi/testing";
         let success = Extras::download_xxmi(String::from("SpectrumQT/XXMI-Libs-Package"), dest.to_string(), true, move |current, total| {
             println!("current: {}, total: {}", current, total);
-        });
+        }).await;
         if success {
             let finaldest = Path::new(&dest).join("xxmi.zip");
             let extract = extract_archive("".to_owned(), finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
@@ -30,10 +30,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn download_xxmi_packages_test() {
+    #[tokio::test]
+    async fn download_xxmi_packages_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/xxmi/testing";
-        let success = Extras::download_xxmi_packages(String::from("SilentNightSound/GIMI-Package"), String::from("SpectrumQT/SRMI-Package"), String::from("leotorrez/ZZMI-Package"), String::from("SpectrumQT/WWMI-Package"), String::from("leotorrez/HIMI-Package"), dest.to_string());
+        let success = Extras::download_xxmi_packages(String::from("SilentNightSound/GIMI-Package"), String::from("SpectrumQT/SRMI-Package"), String::from("leotorrez/ZZMI-Package"), String::from("SpectrumQT/WWMI-Package"), String::from("leotorrez/HIMI-Package"), dest.to_string()).await;
         if success {
             let d = Path::new(&dest);
             extract_archive("".to_owned(), d.join("gimi.zip").to_str().unwrap().to_string(), d.join("gimi").to_str().unwrap().to_string(), false);
@@ -47,13 +47,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn download_fpsunlock_test() {
+    #[tokio::test]
+    async fn download_fpsunlock_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/fps_unlock/testing";
 
         let success = Extras::download_fps_unlock(String::from("TwintailTeam/KeqingUnlock"), dest.to_string(), move |current, total| {
             println!("current: {}, total: {}", current, total);
-        });
+        }).await;
         if success {
             println!("fps unlock downloaded!")
         } else {
@@ -61,13 +61,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn download_jadeite_test() {
+    #[tokio::test]
+    async fn download_jadeite_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/jadeite/testing";
 
         let success = Extras::download_jadeite(String::from("mkrsym1/jadeite"), dest.to_string(), move |current, total| {
             println!("current: {}, total: {}", current, total);
-        });
+        }).await;
         if success {
             let finaldest = Path::new(dest).join("jadeite.zip");
             let extract = extract_archive("".to_owned(), finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
@@ -82,8 +82,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn download_fullgame_test() {
+    #[tokio::test]
+    async fn download_fullgame_test() {
         let mut urls = Vec::<String>::new();
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.001"));
         urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.002"));
@@ -98,7 +98,7 @@ mod tests {
         let path = "/games/hoyo/hk4e_global/live/testing";
         let rep = <Game as Zipped>::download(urls, path.parse().unwrap(), |current, total| {
             println!("current: {} | total: {}", current, total);
-        });
+        }).await;
         if rep {
             println!("full_game success!");
         } else {
@@ -106,13 +106,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn download_hdiff_test() {
+    #[tokio::test]
+    async fn download_hdiff_test() {
         let url = "https://autopatchhk.yuanshen.com/client_app/update/hk4e_global/game_5.4.0_5.5.0_hdiff_IlvHovyEdpXnwiCH.zip";
         let path = "/games/hoyo/hk4e_global/live/testing";
         let rep = <Game as Zipped>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
             println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
-        });
+        }).await;
         if rep {
             println!("diff_game success!");
         } else {
@@ -120,11 +120,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn repair_game_test() {
+    #[tokio::test]
+    async fn repair_game_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = <Game as Zipped>::repair_game(res_list, path.parse().unwrap(), false, |_, _| {});
+        let rep = <Game as Zipped>::repair_game(res_list, path.parse().unwrap(), false, |_, _| {}).await;
         if rep {
             println!("repair_game success!");
         } else {
@@ -230,7 +230,7 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
         let path = "/games/hoyo/hk4e_global/testing";
 
-        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, false, |current, total| {
+        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, |current, total| {
             println!("current: {} | total: {}", current, total)
         }).await;
         if rep {
