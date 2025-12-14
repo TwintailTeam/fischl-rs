@@ -29,8 +29,8 @@ pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, bra
             let p = path.join("steamrt.tar.xz");
             let dld = d.download(p.as_path(), progress).await;
             if dld.is_ok() {
-                extract_archive("".to_string(), p.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), true);
-                true
+                let ext = extract_archive("".to_string(), p.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), true);
+                if ext { true } else { false }
             } else { false }
         } else { false }
     }
