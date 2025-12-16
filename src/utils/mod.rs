@@ -52,38 +52,18 @@ pub(crate) fn get_codeberg_release(repository: String) -> Option<CodebergRelease
     }
 }
 
-#[allow(dead_code)]
-pub(crate) fn get_tukanrepo_release(repository: String) -> Option<CodebergRelease> {
-    if repository.is_empty() {
-        None
-    } else {
-        let url = format!("https://repo.tukandev.com/api/v1/repos/{}/releases?draft=false&pre-release=false", repository);
-        let client = reqwest::blocking::Client::new();
-        let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").send();
-        if response.is_ok() {
-            let list = response.unwrap();
-            let jsonified: CodebergRelease = list.json().unwrap();
-            Some(jsonified)
-        } else {
-            None
-        }
-    }
-}
-
 pub fn extract_archive(sevenz_bin: String, archive_path: String, extract_dest: String, move_subdirs: bool) -> bool {
     let src = Path::new(&archive_path);
     let dest = Path::new(&extract_dest);
 
     if !src.exists() { false } else if !dest.exists() {
         fs::create_dir_all(dest).unwrap();
-        actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
+        actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), move_subdirs);
         if src.exists() { fs::remove_file(src).unwrap(); }
-        if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
     } else {
-        actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string());
+        actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), move_subdirs);
         if src.exists() { fs::remove_file(src).unwrap(); }
-        if move_subdirs { copy_dir_all(dest).unwrap(); }
         true
     }
 }
@@ -107,34 +87,6 @@ pub fn assemble_multipart_archive(parts: Vec<String>, dest: String) -> bool {
     }
     if out.flush().is_err() { return false; }
     true
-}
-
-pub(crate) fn copy_dir_all(dst: impl AsRef<Path>) -> io::Result<()> {
-    for entry in fs::read_dir(dst.as_ref())? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-
-        if ty.is_dir() {
-            move_dir_and_files(&entry.path(), dst.as_ref())?;
-            fs::remove_dir_all(entry.path())?;
-        }
-    }
-    Ok(())
-}
-
-fn move_dir_and_files(src: &Path, dst: &Path) -> io::Result<()> {
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-
-        if ty.is_file() {
-            fs::rename(entry.path(), dst.join(entry.file_name()))?;
-        } else {
-            let new_path = dst.join(entry.file_name());
-            fs::rename(entry.path(), new_path)?;
-        }
-    }
-    Ok(())
 }
 
 pub(crate) fn move_all<'a>(src: &'a Path, dst: &'a Path) -> Pin<Box<dyn Future<Output = io::Result<()>> + Send + 'a>> {
@@ -219,18 +171,7 @@ pub fn seven_zip<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, 
     }
 }
 
-pub fn patch_aki(file: String) {
-    let p = Path::new(&file);
-    if p.exists() {
-        let fp = fs::read_to_string(p).unwrap();
-        let patched = fp.lines().map(|line| {
-                if line.starts_with("KR_ChannelID=") { "KR_ChannelID=205" } else { line }
-            }).collect::<Vec<_>>().join("\n");
-        fs::write(p, patched).unwrap();
-    }
-}
-
-pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest: String) {
+pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest: String, strip_head_path: bool) {
     let ext = get_full_extension(archive_path.as_str()).unwrap();
     match ext {
         "zip" | "krzip" => {
@@ -244,13 +185,81 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
             let archive = fs::File::open(archive_path).unwrap();
             let decompressor = flate2::read::GzDecoder::new(archive);
             let mut archive = tar::Archive::new(decompressor);
-            archive.unpack(dest).unwrap_or(());
+
+            if !strip_head_path {
+                archive.unpack(&dest).unwrap_or(());
+            } else {
+                let dest_path = Path::new(&dest);
+                let mut entries = archive.entries().unwrap();
+
+                let first_entry = match entries.next() {
+                    Some(e) => e.unwrap(),
+                    None => return,
+                };
+
+                let first_path = first_entry.path().unwrap();
+                let mut comps = first_path.components();
+                let top = match comps.next() {
+                    Some(c) => PathBuf::from(c.as_os_str()),
+                    None => PathBuf::new(),
+                };
+                let mut all_entries = std::iter::once(Ok(first_entry)).chain(entries);
+
+                for entry_res in all_entries {
+                    let mut entry = entry_res.unwrap();
+                    let orig = entry.path().unwrap();
+
+                    let rel = match orig.strip_prefix(&top) {
+                        Ok(p) => p,
+                        Err(_) => orig.as_ref(),
+                    };
+
+                    if rel.as_os_str().is_empty() { continue; }
+                    let out = dest_path.to_path_buf().join(rel);
+                    if let Some(parent) = out.parent() { fs::create_dir_all(parent).unwrap(); }
+                    entry.unpack(&out).unwrap();
+                }
+            }
         },
         "tar.xz" => {
             let file = fs::File::open(&archive_path).unwrap();
             let decompressor = liblzma::read::XzDecoder::new(file);
             let mut archive = tar::Archive::new(decompressor);
-            archive.unpack(dest).unwrap_or(());
+
+            if !strip_head_path {
+                archive.unpack(&dest).unwrap_or(());
+            } else {
+                let dest_path = Path::new(&dest);
+                let mut entries = archive.entries().unwrap();
+
+                let first_entry = match entries.next() {
+                    Some(e) => e.unwrap(),
+                    None => return,
+                };
+
+                let first_path = first_entry.path().unwrap();
+                let mut comps = first_path.components();
+                let top = match comps.next() {
+                    Some(c) => PathBuf::from(c.as_os_str()),
+                    None => PathBuf::new(),
+                };
+                let mut all_entries = std::iter::once(Ok(first_entry)).chain(entries);
+
+                for entry_res in all_entries {
+                    let mut entry = entry_res.unwrap();
+                    let orig = entry.path().unwrap();
+
+                    let rel = match orig.strip_prefix(&top) {
+                        Ok(p) => p,
+                        Err(_) => orig.as_ref(),
+                    };
+
+                    if rel.as_os_str().is_empty() { continue; }
+                    let out = dest_path.to_path_buf().join(rel);
+                    if let Some(parent) = out.parent() { fs::create_dir_all(parent).unwrap(); }
+                    entry.unpack(&out).unwrap();
+                }
+            }
         }
         "7z" => {
             seven_zip(sevenz_bin, archive_path.clone(), dest).unwrap();
