@@ -203,7 +203,7 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
                     Some(c) => PathBuf::from(c.as_os_str()),
                     None => PathBuf::new(),
                 };
-                let mut all_entries = std::iter::once(Ok(first_entry)).chain(entries);
+                let all_entries = std::iter::once(Ok(first_entry)).chain(entries);
 
                 for entry_res in all_entries {
                     let mut entry = entry_res.unwrap();
@@ -243,7 +243,7 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
                     Some(c) => PathBuf::from(c.as_os_str()),
                     None => PathBuf::new(),
                 };
-                let mut all_entries = std::iter::once(Ok(first_entry)).chain(entries);
+                let all_entries = std::iter::once(Ok(first_entry)).chain(entries);
 
                 for entry_res in all_entries {
                     let mut entry = entry_res.unwrap();
