@@ -586,7 +586,7 @@ async fn process_file_chunks(chunk_task: ManifestFile, chunks_dir: PathBuf, stag
 
     let file = tokio::fs::OpenOptions::new().create(true).write(true).open(&fp).await.unwrap();
     file.set_len(chunk_task.size).await.unwrap();
-    let (write_tx, mut write_rx) = tokio::sync::mpsc::channel::<(Vec<u8>, u64)>(500);
+    let (write_tx, mut write_rx) = tokio::sync::mpsc::channel::<(Vec<u8>, u64)>(600);
 
     let writer_handle = tokio::spawn({
         async move {

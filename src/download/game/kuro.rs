@@ -196,7 +196,7 @@ impl Kuro for Game {
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
-                        let krd = krdiff.apply(); //krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        let krd = krdiff.apply();
                         if krd {
                             let fsize = d.entries.iter().map(|f| f.size).sum();
                             progress_counter.fetch_add(fsize, Ordering::SeqCst);
@@ -215,7 +215,7 @@ impl Kuro for Game {
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
-                        let krd = krdiff.apply(); //krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        let krd = krdiff.apply();
                         if krd {} else { eprintln!("Failed to apply krpdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
@@ -346,7 +346,7 @@ impl Kuro for Game {
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
-                        let krd = krdiff.apply(); //krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        let krd = krdiff.apply();
                         if krd {} else { eprintln!("Failed to apply krdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
@@ -360,7 +360,7 @@ impl Kuro for Game {
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
-                        let krd = krdiff.apply(); //krpatchz(krpatchz_path.to_owned(), &game_path, &stringed);
+                        let krd = krdiff.apply();
                         if krd {} else { eprintln!("Failed to apply krpdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
