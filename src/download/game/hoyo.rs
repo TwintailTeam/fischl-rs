@@ -212,8 +212,14 @@ impl Sophon for Game {
                                             drop(output);
 
                                             let of = mainp.join(&ff.name.clone());
+                                            let is_dir = ff.name.ends_with("/");
                                             if !of.exists() {
-                                                fs::File::create(&of).unwrap();
+                                                if is_dir {
+                                                    fs::create_dir_all(&of).unwrap();
+                                                } else {
+                                                    if let Some(parent) = of.parent() { fs::create_dir_all(parent).unwrap(); }
+                                                    fs::File::create(&of).unwrap();
+                                                }
                                             } else {
                                                 let r = fs::remove_file(&of);
                                                 match r {
@@ -241,7 +247,7 @@ impl Sophon for Game {
                                         drop(output);
 
                                         let of = mainp.join(&chunk.original_filename);
-                                        if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e); }
+                                        if of.exists() { if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e); } }
                                     }
                                 } else { continue; }
                             } else {
@@ -268,8 +274,14 @@ impl Sophon for Game {
                                                 drop(output);
 
                                                 let of = mainp.join(&ff.name.clone());
+                                                let is_dir = ff.name.ends_with("/");
                                                 if !of.exists() {
-                                                    fs::File::create(&of).unwrap();
+                                                    if is_dir {
+                                                        fs::create_dir_all(&of).unwrap();
+                                                    } else {
+                                                        if let Some(parent) = of.parent() { fs::create_dir_all(parent).unwrap(); }
+                                                        fs::File::create(&of).unwrap();
+                                                    }
                                                 } else {
                                                     let r = fs::remove_file(&of);
                                                     match r {
@@ -297,7 +309,7 @@ impl Sophon for Game {
                                             drop(output);
 
                                             let of = mainp.join(&chunk.original_filename);
-                                            if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e); }
+                                            if of.exists() { if let Err(e) = hpatchz(hpatchz_path.to_owned(), &of, &diffp, &output_path) { eprintln!("Failed to hpatchz with error: {}", e); } }
                                         }
                                     } else { continue; }
                                 }
