@@ -247,8 +247,6 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
                 };
                 let all_entries = std::iter::once(Ok(first_entry)).chain(entries);
 
-                println!("first entry: {:?} | top: {:?}", first_path, top);
-
                 for entry_res in all_entries {
                     let mut entry = entry_res.unwrap();
                     let orig = entry.path().unwrap().to_path_buf();
