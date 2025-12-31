@@ -23,7 +23,7 @@ impl Compat {
                 let dp = d.to_path_buf().join(name.as_str());
                 let dla = dll.download(dp.clone(), progress).await;
                 if dla.is_ok() {
-                    if extract { extract_archive("".to_string(), dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true); true } else { true }
+                    if extract { extract_archive(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true); true } else { true }
                 } else { false }
             } else { false }
         } else {

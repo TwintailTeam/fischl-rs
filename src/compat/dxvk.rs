@@ -24,7 +24,7 @@ impl Compat {
                 let dp = d.to_path_buf().join(name.as_str());
                 let dl = du.download(dp.clone(), progress).await;
                 if dl.is_ok() {
-                    if extract { extract_archive("".to_string(), dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true); true } else { true }
+                    if extract { extract_archive(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true); true } else { true }
                 } else { false }
             } else { false }
         } else {

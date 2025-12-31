@@ -52,17 +52,17 @@ pub(crate) fn get_codeberg_release(repository: String) -> Option<CodebergRelease
     }
 }
 
-pub fn extract_archive(sevenz_bin: String, archive_path: String, extract_dest: String, move_subdirs: bool) -> bool {
+pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs: bool) -> bool {
     let src = Path::new(&archive_path);
     let dest = Path::new(&extract_dest);
 
     if !src.exists() { false } else if !dest.exists() {
         fs::create_dir_all(dest).unwrap();
-        actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), move_subdirs);
+        actually_uncompress(src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), move_subdirs);
         if src.exists() { fs::remove_file(src).unwrap(); }
         true
     } else {
-        actually_uncompress(sevenz_bin, src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), move_subdirs);
+        actually_uncompress(src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), move_subdirs);
         if src.exists() { fs::remove_file(src).unwrap(); }
         true
     }
@@ -162,16 +162,7 @@ pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, pa
     }
 }
 
-pub fn seven_zip<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, output: T) -> io::Result<()> {
-    let output = Command::new(bin_path.as_str()).arg("x").arg(format!("-o{}", output.into().to_str().unwrap())).arg(file.into().as_mut_os_str()).output()?;
-
-    if output.status.success() { Ok(()) } else {
-        let err = String::from_utf8_lossy(&output.stderr);
-        Err(Error::other(format!("Failed to extract archive: {err}")))
-    }
-}
-
-pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest: String, strip_head_path: bool) {
+pub(crate) fn actually_uncompress(archive_path: String, dest: String, strip_head_path: bool) {
     let ext = get_full_extension(archive_path.as_str()).unwrap();
     match ext {
         "zip" | "krzip" => {
@@ -192,28 +183,17 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
                 let dest_path = Path::new(&dest);
                 let mut entries = archive.entries().unwrap();
 
-                let first_entry = match entries.next() {
-                    Some(e) => e.unwrap(),
-                    None => return,
-                };
-
+                let first_entry = match entries.next() { Some(e) => e.unwrap(), None => return };
                 let first_path = first_entry.path().unwrap().to_path_buf();
                 let first_path = first_path.strip_prefix(".").unwrap_or(&first_path).to_path_buf();
-                let mut comps = first_path.components();
-                let top = match comps.next() {
-                    Some(c) => PathBuf::from(c.as_os_str()),
-                    None => PathBuf::new(),
-                };
-                let all_entries = std::iter::once(Ok(first_entry)).chain(entries);
+                let top = match first_path.components().next() { Some(c) => PathBuf::from(c.as_os_str()), None => PathBuf::new() };
 
+                let all_entries = std::iter::once(Ok(first_entry)).chain(entries);
                 for entry_res in all_entries {
                     let mut entry = entry_res.unwrap();
                     let orig = entry.path().unwrap().to_path_buf();
                     let orig = orig.strip_prefix(".").unwrap_or(&orig).to_path_buf();
-                    let rel = match orig.strip_prefix(&top) {
-                        Ok(p) => p,
-                        Err(_) => orig.as_ref(),
-                    };
+                    let rel = match orig.strip_prefix(&top) { Ok(p) => p, Err(_) => orig.as_ref() };
 
                     if rel.as_os_str().is_empty() { continue; }
                     let out = dest_path.to_path_buf().join(rel);
@@ -233,28 +213,17 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
                 let dest_path = Path::new(&dest);
                 let mut entries = archive.entries().unwrap();
 
-                let first_entry = match entries.next() {
-                    Some(e) => e.unwrap(),
-                    None => return,
-                };
-
+                let first_entry = match entries.next() { Some(e) => e.unwrap(), None => return};
                 let first_path = first_entry.path().unwrap().to_path_buf();
                 let first_path = first_path.strip_prefix(".").unwrap_or(&first_path).to_path_buf();
-                let mut comps = first_path.components();
-                let top = match comps.next() {
-                    Some(c) => PathBuf::from(c.as_os_str()),
-                    None => PathBuf::new(),
-                };
-                let all_entries = std::iter::once(Ok(first_entry)).chain(entries);
+                let top = match first_path.components().next() { Some(c) => PathBuf::from(c.as_os_str()), None => PathBuf::new() };
 
+                let all_entries = std::iter::once(Ok(first_entry)).chain(entries);
                 for entry_res in all_entries {
                     let mut entry = entry_res.unwrap();
                     let orig = entry.path().unwrap().to_path_buf();
                     let orig = orig.strip_prefix(".").unwrap_or(&orig).to_path_buf();
-                    let rel = match orig.strip_prefix(&top) {
-                        Ok(p) => p,
-                        Err(_) => orig.as_ref(),
-                    };
+                    let rel = match orig.strip_prefix(&top) { Ok(p) => p, Err(_) => orig.as_ref() };
 
                     if rel.as_os_str().is_empty() { continue; }
                     let out = dest_path.to_path_buf().join(rel);
@@ -263,9 +232,7 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
                 }
             }
         }
-        "7z" => {
-            seven_zip(sevenz_bin, archive_path.clone(), dest).unwrap();
-        }
+        "7z" => { sevenz_rust2::decompress_file(archive_path.as_str(), dest.as_str()).unwrap_or(()); }
         &_ => {}
     }
 }

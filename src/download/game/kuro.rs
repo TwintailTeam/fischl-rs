@@ -177,7 +177,7 @@ impl Kuro for Game {
                         let staging = staging.clone();
                         let zp = staging.join(z.dest.clone());
                         if zp.exists() {
-                            let r = extract_archive("".to_string(), zp.to_str().unwrap().to_string(), staging.to_str().unwrap().to_string(), false);
+                            let r = extract_archive(zp.to_str().unwrap().to_string(), staging.to_str().unwrap().to_string(), false);
                             if r {
                                 let fsize = z.entries.iter().map(|f| f.size).sum();
                                 progress_counter.fetch_add(fsize, Ordering::SeqCst);
@@ -334,7 +334,7 @@ impl Kuro for Game {
                     for z in zips {
                         let staging = staging.clone();
                         let zp = staging.join(z.dest.clone());
-                        if zp.exists() { extract_archive("".to_string(), zp.to_str().unwrap().to_string(), staging.to_str().unwrap().to_string(), false); }
+                        if zp.exists() { extract_archive(zp.to_str().unwrap().to_string(), staging.to_str().unwrap().to_string(), false); }
                     }
                 }
                 // Wuwa has krdiffs apply them if they exist

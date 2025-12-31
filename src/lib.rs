@@ -18,7 +18,7 @@ mod tests {
         }).await;
         if success {
             let finaldest = Path::new(&dest).join("xxmi.zip");
-            let extract = extract_archive("".to_owned(), finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
 
             if extract {
                 println!("xxmi extracted!");
@@ -36,11 +36,11 @@ mod tests {
         let success = Extras::download_xxmi_packages(String::from("SilentNightSound/GIMI-Package"), String::from("SpectrumQT/SRMI-Package"), String::from("leotorrez/ZZMI-Package"), String::from("SpectrumQT/WWMI-Package"), String::from("leotorrez/HIMI-Package"), dest.to_string()).await;
         if success {
             let d = Path::new(&dest);
-            extract_archive("".to_owned(), d.join("gimi.zip").to_str().unwrap().to_string(), d.join("gimi").to_str().unwrap().to_string(), false);
-            extract_archive("".to_owned(), d.join("srmi.zip").to_str().unwrap().to_string(), d.join("srmi").to_str().unwrap().to_string(), false);
-            extract_archive("".to_owned(), d.join("zzmi.zip").to_str().unwrap().to_string(), d.join("zzmi").to_str().unwrap().to_string(), false);
-            extract_archive("".to_owned(), d.join("wwmi.zip").to_str().unwrap().to_string(), d.join("wwmi").to_str().unwrap().to_string(), false);
-            extract_archive("".to_owned(), d.join("himi.zip").to_str().unwrap().to_string(), d.join("himi").to_str().unwrap().to_string(), false);
+            extract_archive(d.join("gimi.zip").to_str().unwrap().to_string(), d.join("gimi").to_str().unwrap().to_string(), false);
+            extract_archive(d.join("srmi.zip").to_str().unwrap().to_string(), d.join("srmi").to_str().unwrap().to_string(), false);
+            extract_archive(d.join("zzmi.zip").to_str().unwrap().to_string(), d.join("zzmi").to_str().unwrap().to_string(), false);
+            extract_archive(d.join("wwmi.zip").to_str().unwrap().to_string(), d.join("wwmi").to_str().unwrap().to_string(), false);
+            extract_archive(d.join("himi.zip").to_str().unwrap().to_string(), d.join("himi").to_str().unwrap().to_string(), false);
             println!("xxmi packages extracted!")
         } else {
             println!("Failed to download xxmi packages");
@@ -70,7 +70,7 @@ mod tests {
         }).await;
         if success {
             let finaldest = Path::new(dest).join("jadeite.zip");
-            let extract = extract_archive("".to_owned(), finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
+            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
 
             if extract {
                 println!("jadeite extracted!")
