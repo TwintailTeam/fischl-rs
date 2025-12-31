@@ -197,7 +197,8 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
                     None => return,
                 };
 
-                let first_path = first_entry.path().unwrap();
+                let first_path = first_entry.path().unwrap().to_path_buf();
+                let first_path = first_path.strip_prefix(".").unwrap_or(&first_path).to_path_buf();
                 let mut comps = first_path.components();
                 let top = match comps.next() {
                     Some(c) => PathBuf::from(c.as_os_str()),
@@ -207,8 +208,8 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
 
                 for entry_res in all_entries {
                     let mut entry = entry_res.unwrap();
-                    let orig = entry.path().unwrap();
-
+                    let orig = entry.path().unwrap().to_path_buf();
+                    let orig = orig.strip_prefix(".").unwrap_or(&orig).to_path_buf();
                     let rel = match orig.strip_prefix(&top) {
                         Ok(p) => p,
                         Err(_) => orig.as_ref(),
@@ -237,7 +238,8 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
                     None => return,
                 };
 
-                let first_path = first_entry.path().unwrap();
+                let first_path = first_entry.path().unwrap().to_path_buf();
+                let first_path = first_path.strip_prefix(".").unwrap_or(&first_path).to_path_buf();
                 let mut comps = first_path.components();
                 let top = match comps.next() {
                     Some(c) => PathBuf::from(c.as_os_str()),
@@ -245,10 +247,12 @@ pub(crate) fn actually_uncompress(sevenz_bin: String, archive_path: String, dest
                 };
                 let all_entries = std::iter::once(Ok(first_entry)).chain(entries);
 
+                println!("first entry: {:?} | top: {:?}", first_path, top);
+
                 for entry_res in all_entries {
                     let mut entry = entry_res.unwrap();
-                    let orig = entry.path().unwrap();
-
+                    let orig = entry.path().unwrap().to_path_buf();
+                    let orig = orig.strip_prefix(".").unwrap_or(&orig).to_path_buf();
                     let rel = match orig.strip_prefix(&top) {
                         Ok(p) => p,
                         Err(_) => orig.as_ref(),
