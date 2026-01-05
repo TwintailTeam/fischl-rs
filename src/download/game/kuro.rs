@@ -21,15 +21,19 @@ impl Kuro for Game {
         if dlr.exists() { tokio::fs::remove_dir_all(&dlr).await.unwrap(); }
         if dlptch.exists() { tokio::fs::remove_dir_all(&dlptch).await.unwrap(); }
 
+        let manifest_file = dlp.clone().join("manifest.json");
+        if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
-        let dll = dl.download(dlp.clone().join("manifest.json"), |_, _| {}).await;
+        let dll = dl.download(manifest_file, |_, _| {}).await;
 
         if dll.is_ok() {
-            let mut f = tokio::fs::File::open(dlp.join("manifest.json").as_path()).await.unwrap();
+            let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
             let mut reader = String::new();
             f.read_to_string(&mut reader).await.unwrap();
-            let files: KuroIndex = serde_json::from_str(&reader).unwrap();
+            let actual_files: serde_json::error::Result<KuroIndex> = serde_json::from_str(&reader);
+            if actual_files.is_err() { return false; }
+            let files = actual_files.unwrap();
 
             let staging = dlp.join("staging");
             if !staging.exists() { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
@@ -152,15 +156,19 @@ impl Kuro for Game {
         if dlr.exists() { tokio::fs::remove_dir_all(&dlr).await.unwrap(); }
         if dlp.exists() { tokio::fs::remove_dir_all(&dlp).await.unwrap(); }
 
+        let manifest_file = p.clone().join("manifest.json");
+        if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
-        let dll = dl.download(p.clone().join("manifest.json"), |_, _| {}).await;
+        let dll = dl.download(manifest_file, |_, _| {}).await;
 
         if dll.is_ok() {
-            let mut f = tokio::fs::File::open(p.join("manifest.json").as_path()).await.unwrap();
+            let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
             let mut reader = String::new();
             f.read_to_string(&mut reader).await.unwrap();
-            let files: KuroIndex = serde_json::from_str(&reader).unwrap();
+            let actual_files: serde_json::error::Result<KuroIndex> = serde_json::from_str(&reader);
+            if actual_files.is_err() { return false; }
+            let files = actual_files.unwrap();
 
             let staging = p.join("staging");
             if !staging.exists() { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
@@ -393,15 +401,19 @@ impl Kuro for Game {
         if dlptch.exists() { tokio::fs::remove_dir_all(&dlptch).await.unwrap(); }
         if dlp.exists() { tokio::fs::remove_dir_all(&dlp).await.unwrap(); }
 
+        let manifest_file = p.clone().join("manifest.json");
+        if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
-        let dll = dl.download(p.clone().join("manifest.json"), |_, _| {}).await;
+        let dll = dl.download(manifest_file, |_, _| {}).await;
 
         if dll.is_ok() {
-            let mut f = tokio::fs::File::open(p.join("manifest.json").as_path()).await.unwrap();
+            let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
             let mut reader = String::new();
             f.read_to_string(&mut reader).await.unwrap();
-            let files: KuroIndex = serde_json::from_str(&reader).unwrap();
+            let actual_files: serde_json::error::Result<KuroIndex> = serde_json::from_str(&reader);
+            if actual_files.is_err() { return false; }
+            let files = actual_files.unwrap();
 
             let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
             let progress_counter = Arc::new(AtomicU64::new(0));
@@ -520,15 +532,19 @@ impl Kuro for Game {
         if dlr.exists() { tokio::fs::remove_dir_all(&dlr).await.unwrap(); }
         if dlp.exists() { tokio::fs::remove_dir_all(&dlp).await.unwrap(); }
 
+        let manifest_file = p.clone().join("manifest.json");
+        if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
-        let dll = dl.download(p.clone().join("manifest.json"), |_, _| {}).await;
+        let dll = dl.download(manifest_file, |_, _| {}).await;
 
         if dll.is_ok() {
-            let mut f = tokio::fs::File::open(p.join("manifest.json").as_path()).await.unwrap();
+            let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
             let mut reader = String::new();
             f.read_to_string(&mut reader).await.unwrap();
-            let files: KuroIndex = serde_json::from_str(&reader).unwrap();
+            let actual_files: serde_json::error::Result<KuroIndex> = serde_json::from_str(&reader);
+            if actual_files.is_err() { return false; }
+            let files = actual_files.unwrap();
 
             let staging = p.join("staging");
             if !p.join(".preload").exists() { fs::File::create(p.join(".preload")).unwrap(); }
