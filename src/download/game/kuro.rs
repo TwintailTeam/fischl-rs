@@ -22,13 +22,13 @@ impl Kuro for Game {
         if dlptch.exists() { tokio::fs::remove_dir_all(&dlptch).await.unwrap(); }
 
         let manifest_file = dlp.clone().join("manifest.json");
-        if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
+        if manifest_file.exists() { tokio::fs::remove_file(manifest_file.clone()).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
         let dll = dl.download(manifest_file.clone(), |_, _| {}).await;
 
         if dll.is_ok() {
-            let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
+            let mut f = tokio::fs::File::open(manifest_file.clone().as_path()).await.unwrap();
             let mut reader = String::new();
             f.read_to_string(&mut reader).await.unwrap();
             let actual_files: serde_json::error::Result<KuroIndex> = serde_json::from_str(&reader);
@@ -157,13 +157,13 @@ impl Kuro for Game {
         if dlp.exists() { tokio::fs::remove_dir_all(&dlp).await.unwrap(); }
 
         let manifest_file = p.clone().join("manifest.json");
-        if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
+        if manifest_file.exists() { tokio::fs::remove_file(manifest_file.clone()).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
         let dll = dl.download(manifest_file.clone(), |_, _| {}).await;
 
         if dll.is_ok() {
-            let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
+            let mut f = tokio::fs::File::open(manifest_file.clone().as_path()).await.unwrap();
             let mut reader = String::new();
             f.read_to_string(&mut reader).await.unwrap();
             let actual_files: serde_json::error::Result<KuroIndex> = serde_json::from_str(&reader);
@@ -402,13 +402,13 @@ impl Kuro for Game {
         if dlp.exists() { tokio::fs::remove_dir_all(&dlp).await.unwrap(); }
 
         let manifest_file = p.clone().join("manifest.json");
-        if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
+        if manifest_file.exists() { tokio::fs::remove_file(manifest_file.clone()).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
         let dll = dl.download(manifest_file.clone(), |_, _| {}).await;
 
         if dll.is_ok() {
-            let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
+            let mut f = tokio::fs::File::open(manifest_file.clone().as_path()).await.unwrap();
             let mut reader = String::new();
             f.read_to_string(&mut reader).await.unwrap();
             let actual_files: serde_json::error::Result<KuroIndex> = serde_json::from_str(&reader);
@@ -533,13 +533,13 @@ impl Kuro for Game {
         if dlp.exists() { tokio::fs::remove_dir_all(&dlp).await.unwrap(); }
 
         let manifest_file = p.clone().join("manifest.json");
-        if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
+        if manifest_file.exists() { tokio::fs::remove_file(manifest_file.clone()).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
         let dll = dl.download(manifest_file.clone(), |_, _| {}).await;
 
         if dll.is_ok() {
-            let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
+            let mut f = tokio::fs::File::open(manifest_file.clone().as_path()).await.unwrap();
             let mut reader = String::new();
             f.read_to_string(&mut reader).await.unwrap();
             let actual_files: serde_json::error::Result<KuroIndex> = serde_json::from_str(&reader);
