@@ -25,7 +25,7 @@ impl Kuro for Game {
         if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
-        let dll = dl.download(manifest_file, |_, _| {}).await;
+        let dll = dl.download(manifest_file.clone(), |_, _| {}).await;
 
         if dll.is_ok() {
             let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
@@ -160,7 +160,7 @@ impl Kuro for Game {
         if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
-        let dll = dl.download(manifest_file, |_, _| {}).await;
+        let dll = dl.download(manifest_file.clone(), |_, _| {}).await;
 
         if dll.is_ok() {
             let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
@@ -405,7 +405,7 @@ impl Kuro for Game {
         if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
-        let dll = dl.download(manifest_file, |_, _| {}).await;
+        let dll = dl.download(manifest_file.clone(), |_, _| {}).await;
 
         if dll.is_ok() {
             let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
@@ -536,7 +536,7 @@ impl Kuro for Game {
         if manifest_file.exists() { tokio::fs::remove_file(manifest_file).await.unwrap(); }
         let client = Arc::new(AsyncDownloader::setup_client().await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap();
-        let dll = dl.download(manifest_file, |_, _| {}).await;
+        let dll = dl.download(manifest_file.clone(), |_, _| {}).await;
 
         if dll.is_ok() {
             let mut f = tokio::fs::File::open(manifest_file.as_path()).await.unwrap();
