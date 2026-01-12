@@ -2,155 +2,81 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use crate::download::Extras;
-use crate::utils::{get_codeberg_release, get_github_release};
-use crate::utils::downloader::{AsyncDownloader};
-use crate::utils::github_structs::Asset;
+use crate::utils::{TTLManifest,downloader::AsyncDownloader};
 
 #[cfg(feature = "download")]
 impl Extras {
-    pub async fn download_fps_unlock(repository: String, dest: String, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool {
+    pub async fn download_extra_package(package_id: String, package_type: String, extract_mode: bool, move_subdirs: bool, append_package_to_dest: bool, dest: String, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
-            let rel = tokio::task::spawn_blocking(move || { get_github_release(repository.clone()) }).await.unwrap();
-            if rel.is_some() {
-                let r = rel.unwrap();
-                let u = r.assets.get(0).unwrap().browser_download_url.clone();
-                let c = AsyncDownloader::setup_client().await;
-                let da = AsyncDownloader::new(Arc::new(c), u).await;
-                if da.is_ok() {
-                    let mut du = da.unwrap();
-                    let dl = du.download(d.join("fpsunlock.exe").as_path(), progress).await;
-                    if dl.is_ok() { true } else { false }
-                } else { false }
-            } else { false }
-        } else {
-            fs::create_dir_all(d).unwrap();
-            false
-        }
-    }
-
-    pub async fn download_jadeite(repository: String, dest: String, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool {
-        let d = Path::new(&dest);
-        if d.exists() {
-            let rel = tokio::task::spawn_blocking(move || { get_codeberg_release(repository.clone()) }).await.unwrap();
-            if rel.is_some() {
-                let r = rel.unwrap();
-                let u = r.get(0).unwrap().assets.get(0).unwrap().browser_download_url.clone();
-                let c = AsyncDownloader::setup_client().await;
-                let da = AsyncDownloader::new(Arc::new(c), u).await;
-                if da.is_ok() {
-                    let mut du = da.unwrap();
-                    let dl = du.download(d.join("jadeite.zip").as_path(), progress).await;
-                    if dl.is_ok() { true } else { false }
-                } else { false }
-            } else { false }
-        } else {
-            fs::create_dir_all(d).unwrap();
-            false
-        }
-    }
-
-    pub async fn download_xxmi(repository: String, dest: String, with_loader: bool, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool {
-        let d = Path::new(&dest);
-        if d.exists() {
-            let rel = tokio::task::spawn_blocking(move || { get_github_release(repository.clone()) }).await.unwrap();
-            if rel.is_some() {
-                let r = rel.unwrap();
-                let filtered = r.assets.into_iter().filter(|a| a.name.clone().unwrap().to_ascii_lowercase().contains("xxmi")).collect::<Vec<Asset>>();
-                let u = filtered.get(0).unwrap().clone().browser_download_url.clone();
-                let c = Arc::new(AsyncDownloader::setup_client().await);
-                let mut da = AsyncDownloader::new(c.clone(), u).await;
-                if da.is_ok() {
-                    let mut du = da.unwrap();
-                    let dl = du.download(d.join("xxmi.zip").as_path(), progress).await;
-                    if dl.is_ok() {
-                        if with_loader {
-                            let r1 = tokio::task::spawn_blocking(move || { get_github_release("TwintailTeam/3dmloader-Package".to_string()) }).await.unwrap();
-                            if r1.is_some() {
-                                let r = r1.unwrap();
-                                let u = r.assets.get(0).unwrap().clone().browser_download_url.clone();
-                                da = AsyncDownloader::new(c, u).await;
+            let manifest = tokio::task::spawn_blocking(move || { Self::fetch_ttl_manifest(package_id) }).await.unwrap();
+            if let Some(m) = manifest {
+                if m.retcode != 0 { return false; }
+                // Data is an optional object response does not contain data if its invalid
+                if let Some(mf) = m.data {
+                    if let Some(pkg) = mf.packages.iter().find(|e| e.package_name.to_ascii_lowercase().contains(package_type.as_str())) {
+                        match pkg.default_download_mode.as_str() {
+                            "DOWNLOAD_MODE_FILE" => {
+                                let c = AsyncDownloader::setup_client().await;
+                                let da = AsyncDownloader::new(Arc::new(c), pkg.git_url.clone()).await;
                                 if da.is_ok() {
                                     let mut du = da.unwrap();
-                                    let dl = du.download(d.join("3dmloader.exe").as_path(), |_c, _t| {}).await;
-                                    if dl.is_ok() { true } else { false }
+                                    let dl = du.download(d.join(&pkg.package_name).as_path(), progress).await;
+                                    if dl.is_ok() {
+                                        let ver_file = d.join("VERSION.txt");
+                                        if let Err(_) = fs::write(ver_file, pkg.version.as_bytes()) { return false; }
+                                        if extract_mode {
+                                            let ext = crate::utils::extract_archive(d.join(&pkg.package_name).to_str().unwrap().to_string(), dest.clone(), move_subdirs);
+                                            if ext { true } else { false }
+                                        } else { true }
+                                    } else { false }
                                 } else { false }
-                            } else { false }
-                        } else { true }
+                            },
+                            "DOWNLOAD_MODE_RAW" => {
+                                if pkg.file_list.is_empty() { return false; }
+                                let progress = Arc::new(progress);
+                                let c = Arc::new(AsyncDownloader::setup_client().await);
+                                for f in pkg.file_list.clone() {
+                                    let progress_cb = progress.clone();
+                                    if f.ends_with("/") {
+                                        let dir_path = if append_package_to_dest { d.join(&package_type).join(f.trim_end_matches('/')) } else { d.join(f.trim_end_matches('/')) };
+                                        if let Err(_) = fs::create_dir_all(&dir_path) { return false; }
+                                    } else {
+                                        let dest_path = if append_package_to_dest { d.join(&package_type).join(&f) } else { d.join(&f) };
+                                        if let Some(parent) = dest_path.parent() { if let Err(_) = fs::create_dir_all(parent) { return false; } }
+
+                                        let url = format!("{base}/{f}", base = pkg.raw_url.trim_end_matches("/"));
+                                        let da = AsyncDownloader::new(c.clone(), url).await;
+                                        if da.is_ok() {
+                                            let mut du = da.unwrap();
+                                            let dl = du.download(dest_path.as_path(), move |cur, total| { progress_cb(cur, total) }).await;
+                                            if dl.is_err() { return false; }
+                                        } else { return false; }
+                                    }
+                                }
+                                true
+                            },
+                            _ => { false }
+                        }
                     } else { false }
                 } else { false }
             } else { false }
-        } else {
-            fs::create_dir_all(d).unwrap();
-            false
-        }
+        } else { false }
     }
 
-    pub async fn download_xxmi_packages(gimi_repo: String, srmi_repo: String, zzmi_repo: String, wwmi_repo: String, himi_repo: String, dest: String) -> bool {
-        let d = Path::new(&dest);
-        if d.exists() {
-                let gimi = tokio::task::spawn_blocking(move || { get_github_release(gimi_repo.clone()) }).await.unwrap();
-                let srmi = tokio::task::spawn_blocking(move || { get_github_release(srmi_repo.clone()) }).await.unwrap();
-                let zzmi = tokio::task::spawn_blocking(move || { get_github_release(zzmi_repo.clone()) }).await.unwrap();
-                let wwmi = tokio::task::spawn_blocking(move || { get_github_release(wwmi_repo.clone()) }).await.unwrap();
-                let himi = tokio::task::spawn_blocking(move || { get_github_release(himi_repo.clone()) }).await.unwrap();
-
-                if gimi.is_some() && srmi.is_some() && zzmi.is_some() && wwmi.is_some() && himi.is_some() {
-                    let gi = gimi.unwrap();
-                    let sr = srmi.unwrap();
-                    let zz = zzmi.unwrap();
-                    let ww = wwmi.unwrap();
-                    let hi = himi.unwrap();
-
-                    let dlg = gi.assets.get(0).unwrap().clone().browser_download_url;
-                    let dlsr = sr.assets.get(0).unwrap().clone().browser_download_url;
-                    let dlzz = zz.assets.get(0).unwrap().clone().browser_download_url;
-                    let dlww = ww.assets.get(0).unwrap().clone().browser_download_url;
-                    let dlhi = hi.assets.get(0).unwrap().clone().browser_download_url;
-
-                    let mut status: Vec<bool> = vec![];
-                    let c = Arc::new(AsyncDownloader::setup_client().await);
-                    let mut dg = AsyncDownloader::new(c.clone(), dlg).await;
-                    if dg.is_ok() {
-                        let mut du = dg.unwrap();
-                        let dl = du.download(d.join("gimi.zip").as_path(), |_c, _t| {}).await;
-                        status.push(dl.is_ok());
+    pub fn fetch_ttl_manifest(package: String) -> Option<TTLManifest> {
+        if package.is_empty() { None } else {
+            let url = format!("https://dl-public.twintaillauncher.app/launcher_app/manifests/{package}.json");
+            let req = reqwest::blocking::get(url);
+            match req {
+                Ok(response) => {
+                    match response.json::<TTLManifest>() {
+                        Ok(version_text) => { Some(version_text) },
+                        Err(_) => { None },
                     }
-
-                    dg = AsyncDownloader::new(c.clone(), dlsr).await;
-                    if dg.is_ok() {
-                        let mut du = dg.unwrap();
-                        let dl = du.download(d.join("srmi.zip").as_path(), |_c, _t| {}).await;
-                        status.push(dl.is_ok());
-                    }
-
-                    dg = AsyncDownloader::new(c.clone(), dlzz).await;
-                    if dg.is_ok() {
-                        let mut du = dg.unwrap();
-                        let dl = du.download(d.join("zzmi.zip").as_path(), |_c, _t| {}).await;
-                        status.push(dl.is_ok());
-                    }
-
-                    dg = AsyncDownloader::new(c.clone(), dlww).await;
-                    if dg.is_ok() {
-                        let mut du = dg.unwrap();
-                        let dl = du.download(d.join("wwmi.zip").as_path(), |_c, _t| {}).await;
-                        status.push(dl.is_ok());
-                    }
-
-                    dg = AsyncDownloader::new(c.clone(), dlhi).await;
-                    if dg.is_ok() {
-                        let mut du = dg.unwrap();
-                        let dl = du.download(d.join("himi.zip").as_path(), |_c, _t| {}).await;
-                        status.push(dl.is_ok());
-                    }
-                    status.iter().all(|&b| b)
-                } else {
-                    false
                 }
-        } else {
-            fs::create_dir_all(d).unwrap();
-            false
+                Err(_) => { None },
+            }
         }
     }
 }

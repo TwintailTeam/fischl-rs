@@ -5,26 +5,18 @@ pub mod download;
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
     use crate::download::{Extras};
     use crate::download::game::{Game, Kuro, Sophon, Zipped};
-    use crate::utils::{extract_archive, prettify_bytes};
+    use crate::utils::{prettify_bytes};
 
     #[tokio::test]
     async fn download_xxmi_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/xxmi/testing";
-        let success = Extras::download_xxmi(String::from("SpectrumQT/XXMI-Libs-Package"), dest.to_string(), true, move |current, total| {
+        let success = Extras::download_extra_package("xxmi".to_string(), "xxmi".to_string(), false, false, false, dest.to_string(), move |current, total| {
             println!("current: {}, total: {}", current, total);
         }).await;
         if success {
-            let finaldest = Path::new(&dest).join("xxmi.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
-
-            if extract {
-                println!("xxmi extracted!");
-            } else {
-                println!("Failed to extract!");
-            }
+            println!("xxmi downloaded!");
         } else {
             println!("failed to download xxmi");
         }
@@ -33,14 +25,10 @@ mod tests {
     #[tokio::test]
     async fn download_xxmi_packages_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/xxmi/testing";
-        let success = Extras::download_xxmi_packages(String::from("SilentNightSound/GIMI-Package"), String::from("SpectrumQT/SRMI-Package"), String::from("leotorrez/ZZMI-Package"), String::from("SpectrumQT/WWMI-Package"), String::from("leotorrez/HIMI-Package"), dest.to_string()).await;
+        let success = Extras::download_extra_package("xxmi".to_string(), "zzmi".to_string(), false, false, true, dest.to_string(), move |current, total| {
+            println!("current: {}, total: {}", current, total);
+        }).await;
         if success {
-            let d = Path::new(&dest);
-            extract_archive(d.join("gimi.zip").to_str().unwrap().to_string(), d.join("gimi").to_str().unwrap().to_string(), false);
-            extract_archive(d.join("srmi.zip").to_str().unwrap().to_string(), d.join("srmi").to_str().unwrap().to_string(), false);
-            extract_archive(d.join("zzmi.zip").to_str().unwrap().to_string(), d.join("zzmi").to_str().unwrap().to_string(), false);
-            extract_archive(d.join("wwmi.zip").to_str().unwrap().to_string(), d.join("wwmi").to_str().unwrap().to_string(), false);
-            extract_archive(d.join("himi.zip").to_str().unwrap().to_string(), d.join("himi").to_str().unwrap().to_string(), false);
             println!("xxmi packages extracted!")
         } else {
             println!("Failed to download xxmi packages");
@@ -50,12 +38,11 @@ mod tests {
     #[tokio::test]
     async fn download_fpsunlock_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/fps_unlock/testing";
-
-        let success = Extras::download_fps_unlock(String::from("TwintailTeam/KeqingUnlock"), dest.to_string(), move |current, total| {
+        let success = Extras::download_extra_package("keqingunlock".to_string(), "keqing_unlock".to_string(), false, false, false, dest.to_string(), move |current, total| {
             println!("current: {}, total: {}", current, total);
         }).await;
         if success {
-            println!("fps unlock downloaded!")
+            println!("fps unlock downloaded!");
         } else {
             println!("failed to download fpsunlock");
         }
@@ -64,19 +51,11 @@ mod tests {
     #[tokio::test]
     async fn download_jadeite_test() {
         let dest = "/home/tukan/.local/share/twintaillauncher/extras/jadeite/testing";
-
-        let success = Extras::download_jadeite(String::from("mkrsym1/jadeite"), dest.to_string(), move |current, total| {
+        let success = Extras::download_extra_package("jadeite".to_string(), "v5.0.1-hotfix".to_string(), true, false, false, dest.to_string(), move |current, total| {
             println!("current: {}, total: {}", current, total);
         }).await;
         if success {
-            let finaldest = Path::new(dest).join("jadeite.zip");
-            let extract = extract_archive(finaldest.to_str().unwrap().to_string(), dest.to_string(), false);
-
-            if extract {
-                println!("jadeite extracted!")
-            } else {
-                println!("Failed to extract!");
-            }
+            println!("jadeite downloaded!");
         } else {
             println!("failed to download jadeite");
         }

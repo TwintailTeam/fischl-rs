@@ -5,11 +5,9 @@ use std::pin::Pin;
 use std::process::Command;
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
-use crate::utils::codeberg_structs::CodebergRelease;
 use crate::utils::github_structs::GithubRelease;
 
 pub(crate) mod github_structs;
-pub(crate) mod codeberg_structs;
 pub(crate) mod proto;
 pub mod free_space;
 pub mod downloader;
@@ -23,7 +21,6 @@ pub fn get_github_release(repository: String) -> Option<GithubRelease> {
         let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").header("X-GitHub-Api-Version", "2022-11-28").header("Accept", "application/vnd.github+json").send();
         match response {
             Ok(resp) => {
-                // Check for HTTP errors explicitly
                 if let Err(err) = resp.error_for_status_ref() { eprintln!("GitHub API returned error status: {:?}", err.status());return None; }
                 match resp.json::<GithubRelease>() {
                     Ok(github_release) => Some(github_release),
@@ -31,23 +28,6 @@ pub fn get_github_release(repository: String) -> Option<GithubRelease> {
                 }
             }
             Err(err) => { eprintln!("Network or request failed: {}", err);None }
-        }
-    }
-}
-
-pub(crate) fn get_codeberg_release(repository: String) -> Option<CodebergRelease> {
-    if repository.is_empty() {
-        None
-    } else {
-        let url = format!("https://codeberg.org/api/v1/repos/{}/releases?draft=false&pre-release=false", repository);
-        let client = reqwest::blocking::Client::new();
-        let response = client.get(url).header(USER_AGENT, "lib/fischl-rs").send();
-        if response.is_ok() {
-            let list = response.unwrap();
-            let jsonified: CodebergRelease = list.json().unwrap();
-            Some(jsonified)
-        } else {
-            None
         }
     }
 }
@@ -71,15 +51,10 @@ pub fn extract_archive(archive_path: String, extract_dest: String, move_subdirs:
 pub fn assemble_multipart_archive(parts: Vec<String>, dest: String) -> bool {
     let first = parts.get(0).unwrap().strip_suffix(".001").unwrap();
     let fap = Path::new(&dest).join(first);
-    let mut out = match fs::File::create(&fap) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
-
+    let mut out = match fs::File::create(&fap) { Ok(f) => f, Err(_) => return false };
     for p in parts.clone() {
         let mut buf = Vec::new();
         let partp = Path::new(&dest).join(&p);
-
         let mut file = fs::File::open(&partp).unwrap();
         file.read_to_end(&mut buf).unwrap();
         out.write_all(&buf).unwrap();
@@ -293,4 +268,28 @@ pub struct KuroGroupInfos {
     pub src_files: Vec<KuroResource>,
     #[serde(rename = "dstFiles", default)]
     pub dst_files: Vec<KuroResource>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+pub struct TTLManifest {
+    pub retcode: i32,
+    pub message: String,
+    pub data: Option<ManifestFile>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+pub struct ManifestFile {
+    pub packages: Vec<ManifestPackage>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+pub struct ManifestPackage {
+    pub git_url: String,
+    pub version: String,
+    pub zip_sha256: String,
+    pub size: u64,
+    pub package_name: String,
+    pub raw_url: String,
+    pub default_download_mode: String,
+    pub file_list: Vec<String>,
 }
