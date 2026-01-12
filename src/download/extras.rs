@@ -9,7 +9,8 @@ impl Extras {
     pub async fn download_extra_package(package_id: String, package_type: String, extract_mode: bool, move_subdirs: bool, append_package_to_dest: bool, dest: String, progress: impl Fn(u64, u64) + Send + Sync + 'static) -> bool {
         let d = Path::new(&dest);
         if d.exists() {
-            let manifest = tokio::task::spawn_blocking(move || { Self::fetch_ttl_manifest(package_id) }).await.unwrap();
+            let pkg_id = package_id.clone();
+            let manifest = tokio::task::spawn_blocking(move || { Self::fetch_ttl_manifest(pkg_id.clone()) }).await.unwrap();
             if let Some(m) = manifest {
                 if m.retcode != 0 { return false; }
                 // Data is an optional object response does not contain data if its invalid
@@ -24,7 +25,7 @@ impl Extras {
                                     let dl = du.download(d.join(&pkg.package_name).as_path(), progress).await;
                                     if dl.is_ok() {
                                         let ver_file = d.join("VERSION.txt");
-                                        if let Err(_) = fs::write(ver_file, pkg.version.as_bytes()) { return false; }
+                                        if let Err(_) = fs::write(ver_file, format!("{}={}", package_id.clone().to_ascii_uppercase(), &pkg.version).as_bytes()) { return false; }
                                         if extract_mode {
                                             let ext = crate::utils::extract_archive(d.join(&pkg.package_name).to_str().unwrap().to_string(), dest.clone(), move_subdirs);
                                             if ext { true } else { false }
