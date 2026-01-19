@@ -9,9 +9,10 @@ pub fn available(path: impl AsRef<Path>) -> Option<u64> {
         a.cmp(&b).reverse()
     });
 
-    let path = path.as_ref().to_path_buf();
+    let path = if cfg!(target_os = "linux") { path.as_ref().canonicalize().unwrap_or(path.as_ref().to_path_buf()) } else { path.as_ref().to_path_buf() };
     for disk in disks.iter() {
-        if path.starts_with(disk.mount_point()) { return Some(disk.available_space()); }
+        let fixed = if cfg!(target_os = "linux") { disk.mount_point().canonicalize().unwrap_or(disk.mount_point().to_path_buf()) } else { disk.mount_point().to_path_buf() };
+        if path.starts_with(fixed) { return Some(disk.available_space()); }
     }
     None
 }
@@ -24,11 +25,11 @@ pub fn is_same_disk(path1: impl AsRef<Path>, path2: impl AsRef<Path>) -> bool {
         a.cmp(&b).reverse()
     });
 
-    let path1 = path1.as_ref().to_path_buf();
-    let path2 = path2.as_ref().to_path_buf();
+    let path1 = if cfg!(target_os = "linux") { path1.as_ref().canonicalize().unwrap_or(path1.as_ref().to_path_buf()) } else { path1.as_ref().to_path_buf() };
+    let path2 = if cfg!(target_os = "linux") { path2.as_ref().canonicalize().unwrap_or(path2.as_ref().to_path_buf()) } else { path2.as_ref().to_path_buf() };
     for disk in disks.iter() {
-        let disk_path = disk.mount_point();
-        if path1.starts_with(disk_path) && path2.starts_with(disk_path) { return true; }
+        let disk_path = if cfg!(target_os = "linux") { disk.mount_point().canonicalize().unwrap_or(disk.mount_point().to_path_buf()) } else { disk.mount_point().to_path_buf() };
+        if path1.starts_with(disk_path.clone()) && path2.starts_with(disk_path) { return true; }
     }
     false
 }
