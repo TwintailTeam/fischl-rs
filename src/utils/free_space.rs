@@ -2,7 +2,7 @@ use std::path::Path;
 use sysinfo::Disks;
 
 pub fn available(path: impl AsRef<Path>) -> Option<u64> {
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         let mut disks = Disks::new_with_refreshed_list();
         disks.sort_by(|a, b| {
@@ -19,7 +19,7 @@ pub fn available(path: impl AsRef<Path>) -> Option<u64> {
         None
     }
 
-    #[cfg(target_os = "linux")]
+    /*#[cfg(target_os = "linux")]
     {
         use std::os::linux::fs::MetadataExt;
         let mut disks = Disks::new_with_refreshed_list();
@@ -35,7 +35,7 @@ pub fn available(path: impl AsRef<Path>) -> Option<u64> {
             if dp == path { return Some(disk.available_space()); }
         }
         None
-    }
+    }*/
 }
 
 pub fn is_same_disk(path1: impl AsRef<Path>, path2: impl AsRef<Path>) -> bool {
@@ -48,11 +48,8 @@ pub fn is_same_disk(path1: impl AsRef<Path>, path2: impl AsRef<Path>) -> bool {
 
     let mut path1 = path1.as_ref().to_path_buf();
     let mut path2 = path2.as_ref().to_path_buf();
-    while let Ok(target) = path1.read_link() { path1 = target; }
-    while let Ok(target) = path2.read_link() { path2 = target; }
     for disk in disks.iter() {
         let mut disk_path = disk.mount_point().to_path_buf();
-        while let Ok(target) = disk_path.read_link() { disk_path = target; }
         if path1.starts_with(disk_path.clone()) && path2.starts_with(disk_path) { return true; }
     }
     false
