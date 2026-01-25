@@ -25,7 +25,7 @@ impl Extras {
                                     let dl = du.download(d.join(&pkg.package_name).as_path(), progress).await;
                                     if dl.is_ok() {
                                         let ver_file = d.join("VERSION.txt");
-                                        let pn = if package_type.as_str() == "v5.0.1-hotfix" || package_type.as_str() == "keqing_unlock" { package_id.clone() } else { package_type.clone() };
+                                        let pn = if package_id.as_str() == "jadeite" || package_id.as_str() == "keqingunlock" { package_id.clone() } else { package_type.clone() };
                                         if let Err(_) = fs::write(ver_file, format!("{}={}", pn.clone().to_ascii_uppercase(), &pkg.version).as_bytes()) { return false; }
                                         if extract_mode {
                                             let ext = crate::utils::extract_archive(d.join(&pkg.package_name).to_str().unwrap().to_string(), dest.clone(), move_subdirs);
