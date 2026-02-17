@@ -50,7 +50,7 @@ impl SpeedTracker {
     /// Returns the smoothed speed in bytes/second.
     pub fn update(&self) -> u64 {
         const EMA_ALPHA: f64 = 0.25; // Lower alpha = heavier smoothing, less responsive to spikes
-        const MIN_UPDATE_MS: u128 = 300; // Longer interval between updates for stability
+        const MIN_UPDATE_MS: u128 = 200; // More responsive speed display
 
         let now = Instant::now();
         let mut last_update = self.last_update.lock().unwrap();
@@ -118,8 +118,7 @@ struct TokenBucketState {
 }
 
 /// Token bucket rate limiter for smooth bandwidth control.
-/// Uses continuous replenishment (20x/sec) instead of fixed windows
-/// to eliminate burst-then-wait speed spikes.
+/// Uses elapsed-based replenishment with 100ms ticks and 64KB minimum capacity,
 #[derive(Debug)]
 pub struct DownloadRateLimiter {
     limit_bps: AtomicU64,
@@ -127,83 +126,56 @@ pub struct DownloadRateLimiter {
 }
 
 impl DownloadRateLimiter {
-    /// Replenishment interval: 25ms (40 times per second) for smoother flow
-    const REFILL_INTERVAL_MS: u64 = 25;
-    const REFILLS_PER_SECOND: u64 = 1000 / Self::REFILL_INTERVAL_MS; // 40
+    /// Tick interval: 100ms (10 times per second)
+    /// Longer intervals reduce lock contention and produce smoother flow.
+    const TICK_INTERVAL_SECS: f64 = 0.1;
+    const MIN_CAPACITY: u64 = 64 * 1024; // 64 KiB minimum bucket size
 
     fn new() -> Self {
-        Self {
-            limit_bps: AtomicU64::new(0),
-            state: Mutex::new(TokenBucketState {
-                tokens: 0,
-                last_refill: tokio::time::Instant::now(),
-            }),
-        }
+        Self { limit_bps: AtomicU64::new(0), state: Mutex::new(TokenBucketState { tokens: 0, last_refill: tokio::time::Instant::now() }) }
     }
 
     fn set_limit_bps(&self, limit_bps: u64) {
         self.limit_bps.store(limit_bps, AtomicOrdering::Relaxed);
     }
 
-    async fn consume(&self, mut bytes: u64, cancel_token: Option<&AtomicBool>) -> bool {
+    async fn consume(&self, bytes: u64, cancel_token: Option<&AtomicBool>) -> bool {
         let limit_bps = self.limit_bps.load(AtomicOrdering::Relaxed);
-        if limit_bps == 0 || bytes == 0 {
-            return true;
-        }
+        if limit_bps == 0 || bytes == 0 { return true; }
 
-        // Tokens to add per refill interval (limit_bps / refills_per_second)
-        let tokens_per_refill = (limit_bps / Self::REFILLS_PER_SECOND).max(1);
-        // Maximum bucket capacity = 50ms worth of tokens (prevents large bursts)
-        // Lower capacity = smoother throughput but slightly less peak utilization
-        let max_tokens = (limit_bps / 20).max(tokens_per_refill);
-        let refill_interval = Duration::from_millis(Self::REFILL_INTERVAL_MS);
+        let capacity = ((limit_bps as f64 * Self::TICK_INTERVAL_SECS) as u64).max(Self::MIN_CAPACITY);
+        let rate = limit_bps as f64;
+        let mut remaining = bytes;
 
-        while bytes > 0 {
-            // Check cancellation token
-            if let Some(token) = cancel_token {
-                if token.load(AtomicOrdering::Relaxed) {
-                    return false;
-                }
-            }
+        while remaining > 0 {
+            if let Some(token) = cancel_token { if token.load(AtomicOrdering::Relaxed) { return false; } }
 
+            let mut state = self.state.lock().await;
             let now = tokio::time::Instant::now();
-            let mut sleep_duration: Option<Duration> = None;
-            let mut allowed_now = 0u64;
+            let elapsed = now.duration_since(state.last_refill).as_secs_f64();
 
-            {
-                let mut state = self.state.lock().await;
+            // Elapsed-based refill: add tokens proportional to time passed, cap at capacity
+            let refilled = (state.tokens as f64 + elapsed * rate).min(capacity as f64) as u64;
+            state.tokens = refilled;
+            state.last_refill = now;
 
-                // Calculate how many refill intervals have passed
-                let elapsed = now.duration_since(state.last_refill);
-                let intervals_passed = elapsed.as_millis() as u64 / Self::REFILL_INTERVAL_MS;
-
-                if intervals_passed > 0 {
-                    // Add tokens for each interval that passed, but cap to prevent burst
-                    let tokens_to_add = intervals_passed.saturating_mul(tokens_per_refill);
-                    state.tokens = state.tokens.saturating_add(tokens_to_add).min(max_tokens);
-                    // Advance last_refill by whole intervals only
-                    state.last_refill +=
-                        Duration::from_millis(intervals_passed * Self::REFILL_INTERVAL_MS);
-                }
-
-                if state.tokens == 0 {
-                    // No tokens available, wait until next refill
-                    sleep_duration = Some(refill_interval.saturating_sub(elapsed));
-                } else {
-                    // Consume available tokens
-                    allowed_now = state.tokens.min(bytes);
-                    state.tokens = state.tokens.saturating_sub(allowed_now);
-                }
-            }
-
-            if let Some(duration) = sleep_duration {
-                if duration > Duration::ZERO {
-                    tokio::time::sleep(duration).await;
-                }
+            if state.tokens == 0 {
+                drop(state);
+                tokio::time::sleep(Duration::from_millis(10)).await;
                 continue;
             }
 
-            bytes = bytes.saturating_sub(allowed_now);
+            let allowed = state.tokens.min(remaining);
+            state.tokens -= allowed;
+            remaining -= allowed;
+
+            if remaining > 0 {
+                // Sleep proportional to missing tokens, clamped to 10ms-100ms
+                let missing_secs = remaining as f64 / rate;
+                let sleep_ms = (missing_secs * 1000.0).clamp(10.0, 100.0) as u64;
+                drop(state);
+                tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+            }
         }
         true
     }
@@ -216,17 +188,17 @@ fn global_download_rate_limiter() -> &'static DownloadRateLimiter {
 }
 
 /// Global semaphore to limit concurrent active downloads.
-/// This is critical for rate limiting to work effectively - with too many
-/// concurrent TCP streams, OS buffers fill faster than we can rate-limit.
+/// Always enforced to prevent unbounded connections from saturating the network.
 static GLOBAL_DOWNLOAD_SEMAPHORE: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
 
-/// Maximum number of concurrent download streams when rate limiting is active.
-/// Keeping this low ensures rate limiting can control actual throughput.
+/// Default concurrent streams (no rate limit). High enough for throughput, bounded to prevent saturation.
+/// Btw Xiao is the best :eeveecool:
+const MAX_CONCURRENT_DOWNLOADS_UNLIMITED: usize = 24;
+/// Concurrent streams when rate limiting is active. Lower count ensures rate limiter can control throughput.
 const MAX_CONCURRENT_DOWNLOADS_LIMITED: usize = 12;
 
 fn global_download_semaphore() -> &'static tokio::sync::Semaphore {
-    GLOBAL_DOWNLOAD_SEMAPHORE
-        .get_or_init(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_DOWNLOADS_LIMITED))
+    GLOBAL_DOWNLOAD_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_DOWNLOADS_UNLIMITED))
 }
 
 /// Sets the global download speed limit in KB/s. Set to 0 for unlimited.
@@ -237,8 +209,7 @@ pub fn set_global_download_speed_limit_kb(kb_per_sec: u64) {
     global_download_rate_limiter().set_limit_bps(bps);
 }
 
-pub const DEFAULT_CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
-const RATE_LIMIT_SLICE_SIZE: usize = 8 * 1024; // 8 KiB
+pub const DEFAULT_CHUNK_SIZE: usize = 64 * 1024; // 64 KiB
 
 #[derive(Error, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DownloadingError {
@@ -425,31 +396,16 @@ impl AsyncDownloader {
                     }
                 }
 
-                // Acquire semaphore permit BEFORE making GET request if rate limiting is active
-                // This is critical - TCP buffering starts when the connection is made
-                let limit_active = global_download_rate_limiter()
-                    .limit_bps
-                    .load(AtomicOrdering::Relaxed)
-                    > 0;
-                let _permit = if limit_active {
-                    let semaphore = global_download_semaphore();
-                    loop {
-                        if let Some(token) = &self.cancel_token {
-                            if token.load(Ordering::Relaxed) {
-                                return Err(DownloadingError::Cancelled);
-                            }
-                        }
-                        // Use timeout to check cancellation periodically while waiting
-                        // This prevents hanging if the user pauses while we are blocked on the semaphore
-                        if let Ok(permit) =
-                            tokio::time::timeout(Duration::from_millis(100), semaphore.acquire())
-                                .await
-                        {
-                            break Some(permit.unwrap());
-                        }
+                // Always acquire semaphore to bound concurrent connections.
+                // When rate-limited, acquire extra permits to reduce concurrency further.
+                let limit_active = global_download_rate_limiter().limit_bps.load(AtomicOrdering::Relaxed) > 0;
+                let permits_needed: u32 = if limit_active { (MAX_CONCURRENT_DOWNLOADS_UNLIMITED / MAX_CONCURRENT_DOWNLOADS_LIMITED) as u32 } else { 1 };
+                let semaphore = global_download_semaphore();
+                let _permit = loop {
+                    if let Some(token) = &self.cancel_token { if token.load(Ordering::Relaxed) { return Err(DownloadingError::Cancelled); } }
+                    if let Ok(permit) = tokio::time::timeout(Duration::from_millis(100), semaphore.acquire_many(permits_needed)).await {
+                        break permit.unwrap();
                     }
-                } else {
-                    None
                 };
 
                 let request = match self.client.get(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send().await {
@@ -497,41 +453,23 @@ impl AsyncDownloader {
 
                     let data = chunk?;
 
-                    // Rate limit BEFORE processing data to back-pressure the TCP stream
-                    // This is the key to actually limiting network speed
-                    for part in data.chunks(RATE_LIMIT_SLICE_SIZE) {
-                        if let Some(token) = &self.cancel_token {
-                            if token.load(Ordering::Relaxed) {
-                                return Err(DownloadingError::Cancelled);
-                            }
-                        }
+                    // Rate-limit the entire network chunk at once (no 8KB slicing)
+                    if !global_download_rate_limiter().consume(data.len() as u64, self.cancel_token.as_deref()).await {
+                        return Err(DownloadingError::Cancelled);
+                    }
 
-                        // Wait for rate limit tokens BEFORE allowing more data through
-                        if !global_download_rate_limiter()
-                            .consume(part.len() as u64, self.cancel_token.as_deref())
-                            .await
-                        {
-                            return Err(DownloadingError::Cancelled);
-                        }
+                    // Track and write the full chunk
+                    net_tracker.add_bytes(data.len() as u64);
+                    if let Err(e) = file.write_all(&data).await { return Err(DownloadingError::OutputFileError(path, e.to_string())); }
+                    written_bytes += data.len() as u64;
+                    disk_tracker.add_bytes(data.len() as u64);
 
-                        // Now track and write the data
-                        net_tracker.add_bytes(part.len() as u64);
-                        if let Err(e) = file.write_all(part).await { return Err(DownloadingError::OutputFileError(path, e.to_string())); }
-                        written_bytes += part.len() as u64;
-                        disk_tracker.add_bytes(part.len() as u64);
-
-                        let now = Instant::now();
-                        if now.duration_since(last_update).as_millis() >= 500 {
-                            let net_speed = net_tracker.update();
-                            let disk_speed = disk_tracker.update();
-                            progress(
-                                written_bytes,
-                                self.length.unwrap_or(written_bytes),
-                                net_speed,
-                                disk_speed,
-                            );
-                            last_update = now;
-                        }
+                    let now = Instant::now();
+                    if now.duration_since(last_update).as_millis() >= 500 {
+                        let net_speed = net_tracker.update();
+                        let disk_speed = disk_tracker.update();
+                        progress(written_bytes, self.length.unwrap_or(written_bytes), net_speed, disk_speed);
+                        last_update = now;
                     }
                 }
 
