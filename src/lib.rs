@@ -14,7 +14,7 @@ mod tests {
     #[test]
     fn test_extract() {
         let archive = "/home/tukan/Downloads/extractme.7z".to_string();
-        let strip = true;
+        let strip = false;
         let out = "/home/tukan/Downloads/out".to_string();
         fs::create_dir_all(&out).unwrap();
         println!("Extracting: {archive}");
