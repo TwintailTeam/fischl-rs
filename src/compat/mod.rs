@@ -48,7 +48,7 @@ pub fn check_steamrt_update(edition: String, branch: String) -> Option<String> {
 }
 
 #[cfg(feature = "compat")]
-pub async fn download_runner(url: String, dest: String, extract: bool, progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static) -> bool {
+pub async fn download_runner(url: String, dest: String, extract: bool, progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static, extract_progress: impl Fn(u64, u64) + Send + 'static) -> bool {
     let d = std::path::Path::new(&dest);
     if d.exists() {
         let c = AsyncDownloader::setup_client().await;
@@ -61,7 +61,7 @@ pub async fn download_runner(url: String, dest: String, extract: bool, progress:
             let dp = d.to_path_buf().join(name.as_str());
             let dla = dll.download(dp.clone(), progress).await;
             if dla.is_ok() {
-                if extract { extract_archive_with_progress(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true, |_c, _t| {}); true } else { true }
+                if extract { extract_archive_with_progress(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true, extract_progress) } else { true }
             } else { false }
         } else { false }
     } else {
@@ -70,28 +70,5 @@ pub async fn download_runner(url: String, dest: String, extract: bool, progress:
             Ok(_) => { false }
             Err(_) => { false }
         }
-    }
-}
-
-#[cfg(feature = "compat")]
-pub async fn download_dxvk(url: String, dest: String, extract: bool, progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static) -> bool {
-    let d = std::path::Path::new(&dest);
-    if d.exists() {
-        let c = AsyncDownloader::setup_client().await;
-        let da = AsyncDownloader::new(std::sync::Arc::new(c), url).await;
-        if da.is_ok() {
-            let mut du = da.unwrap();
-            let fin = du.get_filename().await;
-            let ext = crate::utils::get_full_extension(fin).unwrap();
-            let name = String::from("dxvk.").add(ext);
-            let dp = d.to_path_buf().join(name.as_str());
-            let dl = du.download(dp.clone(), progress).await;
-            if dl.is_ok() {
-                if extract { extract_archive_with_progress(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true, |_c, _t| {}); true } else { true }
-            } else { false }
-        } else { false }
-    } else {
-        std::fs::create_dir_all(d).unwrap();
-        false
     }
 }

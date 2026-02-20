@@ -12,8 +12,8 @@ pub struct Game;
 #[allow(async_fn_in_trait)]
 pub trait Zipped {
     async fn download(urls: Vec<String>, game_path: String, progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>) -> bool;
-    async fn patch(url: String, game_path: String, progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, cancel_token: Option<Arc<AtomicBool>>) -> bool;
-    async fn repair_game(res_list: String, game_path: String, is_fast: bool, progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, cancel_token: Option<Arc<AtomicBool>>) -> bool;
+    async fn patch(url: String, game_path: String, progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>) -> bool;
+    async fn repair_game(res_list: String, game_path: String, is_fast: bool, progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>) -> bool;
 }
 
 /// Progress callback parameters for Kuro (same as Sophon for consistency):

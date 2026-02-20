@@ -5,9 +5,31 @@ pub mod download;
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::io::Write;
     use crate::download::{Extras};
     use crate::download::game::{Game, Kuro, Sophon, Zipped};
-    use crate::utils::{prettify_bytes};
+    use crate::utils::{actually_uncompress_with_progress, prettify_bytes};
+
+    #[test]
+    fn test_extract() {
+        let archive = "/home/tukan/Downloads/extractme.7z".to_string();
+        let strip = true;
+        let out = "/home/tukan/Downloads/out".to_string();
+        fs::create_dir_all(&out).unwrap();
+        println!("Extracting: {archive}");
+        println!("Into: {out}");
+        println!("Strip head: {strip}");
+
+        actually_uncompress_with_progress(archive, out, strip, |done, total| {
+            if total > 0 {
+                let pct = done as f64 / total as f64 * 100.0;
+                println!("{pct:5.1}% | {}/{}", prettify_bytes(done), prettify_bytes(total));
+                std::io::stdout().flush().unwrap_or(());
+            }
+        });
+        println!("Done.");
+    }
 
     #[tokio::test]
     async fn download_xxmi_test() {
@@ -91,7 +113,7 @@ mod tests {
         let path = "/games/hoyo/hk4e_global/live/testing";
         let rep = <Game as Zipped>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total, som1, som2| {
             println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
-        }, None).await;
+        }, None, None).await;
         if rep {
             println!("diff_game success!");
         } else {
@@ -103,7 +125,7 @@ mod tests {
     async fn repair_game_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = <Game as Zipped>::repair_game(res_list, path.parse().unwrap(), false, |_, _, _, _| {}, None).await;
+        let rep = <Game as Zipped>::repair_game(res_list, path.parse().unwrap(), false, |_, _, _, _| {}, None, None).await;
         if rep {
             println!("repair_game success!");
         } else {
