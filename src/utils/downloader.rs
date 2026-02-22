@@ -249,7 +249,7 @@ pub struct AsyncDownloader {
 impl AsyncDownloader {
     pub async fn setup_client() -> ClientWithMiddleware {
         let retry_policy = ExponentialBackoff::builder().build_with_max_retries(30);
-        let c = reqwest::Client::builder().pool_max_idle_per_host(4).http2_adaptive_window(true).http2_keep_alive_interval(Duration::from_secs(30)).http2_keep_alive_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(30)).use_native_tls().no_brotli().no_gzip().no_deflate().no_zstd().build().unwrap();
+        let c = reqwest::Client::builder().pool_max_idle_per_host(4).http2_adaptive_window(true).http2_keep_alive_interval(Duration::from_secs(30)).http2_keep_alive_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(30)).use_native_tls().build().unwrap();
         reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build()
     }
 
