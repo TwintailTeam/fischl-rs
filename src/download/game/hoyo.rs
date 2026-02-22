@@ -25,7 +25,7 @@ impl Sophon for Game {
         if dlr.exists() { fs::remove_dir_all(&dlr).unwrap(); }
         if dlptch.exists() { fs::remove_dir_all(&dlptch).unwrap(); }
 
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap().with_cancel_token(cancel_token.clone());
         let file = dl.get_filename().await.to_string();
         let dlm = dl.download(dlp.clone().join(&file), |_, _, _, _| {}).await;
@@ -263,7 +263,7 @@ impl Sophon for Game {
         if dlp.exists() { fs::remove_dir_all(&dlp).unwrap(); }
         if dlr.exists() { fs::remove_dir_all(&dlr).unwrap(); }
 
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap().with_cancel_token(cancel_token.clone());
         let file = dl.get_filename().await.to_string();
         let dll = dl.download(p.clone().join(&file), |_, _, _, _| {}).await;
@@ -521,7 +521,7 @@ impl Sophon for Game {
         if dlp.exists() { fs::remove_dir_all(&dlp).unwrap(); }
         if dlptch.exists() { fs::remove_dir_all(&dlptch).unwrap(); }
 
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap().with_cancel_token(cancel_token.clone());
         let file = dl.get_filename().await.to_string();
         let dll = dl.download(p.clone().join(&file), |_, _, _, _| {}).await;
@@ -741,7 +741,7 @@ impl Sophon for Game {
         if dlr.exists() { fs::remove_dir_all(&dlr).unwrap(); }
         if dlp.exists() { fs::remove_dir_all(&dlp).unwrap(); }
 
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap().with_cancel_token(cancel_token.clone());
         let file = dl.get_filename().await.to_string();
         let dll = dl.download(p.clone().join(&file), |_, _, _, _| {}).await;

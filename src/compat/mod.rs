@@ -15,7 +15,7 @@ pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, bra
 
         let token = crate::utils::url_safe_token(22); // Bypass Cloudflare cache
         let url = format!("https://repo.steampowered.com/{edition}/images/{branch}/{archive}?versions={token}");
-        let cl = AsyncDownloader::setup_client().await;
+        let cl = AsyncDownloader::setup_client(false).await;
         let dl = AsyncDownloader::new(std::sync::Arc::new(cl), url).await;
         if dl.is_ok() {
             let mut d = dl.unwrap();
@@ -51,7 +51,7 @@ pub fn check_steamrt_update(edition: String, branch: String) -> Option<String> {
 pub async fn download_runner(url: String, dest: String, extract: bool, progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static, extract_progress: impl Fn(u64, u64) + Send + 'static) -> bool {
     let d = std::path::Path::new(&dest);
     if d.exists() {
-        let c = AsyncDownloader::setup_client().await;
+        let c = AsyncDownloader::setup_client(false).await;
         let dl = AsyncDownloader::new(std::sync::Arc::new(c), url).await;
         if dl.is_ok() {
             let mut dll = dl.unwrap();
