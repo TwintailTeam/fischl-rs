@@ -402,7 +402,6 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
             let last_report = Arc::new(AtomicU64::new(0));
             const REPORT_EVERY: u64 = 4 * 1024 * 1024;
             let cb = Arc::new(Mutex::new(progress_callback));
-            // Multi folder (block) 7z solid archives currently fail to extract properly after folder 0 is completed... fix being debugged
             if is_solid {
                 struct PSink<G> { inner: io::BufWriter<fs::File>, extracted: Arc<AtomicU64>, last_report: Arc<AtomicU64>, total_size: u64, cb: Arc<Mutex<G>> }
                 impl<G: Fn(u64, u64)> Write for PSink<G> {
