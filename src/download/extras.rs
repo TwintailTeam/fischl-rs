@@ -18,7 +18,7 @@ impl Extras {
                     if let Some(pkg) = mf.packages.iter().find(|e| e.package_name.to_ascii_lowercase().contains(package_type.as_str())) {
                         match pkg.default_download_mode.as_str() {
                             "DOWNLOAD_MODE_FILE" => {
-                                let c = AsyncDownloader::setup_client().await;
+                                let c = AsyncDownloader::setup_client(false).await;
                                 let da = AsyncDownloader::new(Arc::new(c), pkg.git_url.clone()).await;
                                 if da.is_ok() {
                                     let mut du = da.unwrap();
@@ -39,7 +39,7 @@ impl Extras {
                             "DOWNLOAD_MODE_RAW" => {
                                 if pkg.file_list.is_empty() { return false; }
                                 let progress = Arc::new(progress);
-                                let c = Arc::new(AsyncDownloader::setup_client().await);
+                                let c = Arc::new(AsyncDownloader::setup_client(false).await);
                                 for f in pkg.file_list.clone() {
                                     let progress_cb = progress.clone();
                                     if f.ends_with("/") {

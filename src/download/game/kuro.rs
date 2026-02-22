@@ -25,7 +25,7 @@ impl Kuro for Game {
 
         let manifest_file = dlp.clone().join("manifest.json");
         if manifest_file.exists() { let _ = tokio::fs::remove_file(manifest_file.clone()).await; }
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let dl_result = AsyncDownloader::new(client.clone(), manifest).await;
         if dl_result.is_err() { eprintln!("Failed to connect for manifest download: {:?}", dl_result.err()); return false; }
         let mut dl = dl_result.unwrap().with_cancel_token(cancel_token.clone());
@@ -255,7 +255,7 @@ impl Kuro for Game {
 
         let manifest_file = p.clone().join("manifest.json");
         if manifest_file.exists() { let _ = tokio::fs::remove_file(manifest_file.clone()).await; }
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let dl_result = AsyncDownloader::new(client.clone(), manifest).await;
         if dl_result.is_err() { eprintln!("Failed to connect for patch manifest: {:?}", dl_result.err()); return false; }
         let mut dl = dl_result.unwrap().with_cancel_token(cancel_token.clone());
@@ -549,7 +549,7 @@ impl Kuro for Game {
 
         let manifest_file = p.clone().join("manifest.json");
         if manifest_file.exists() { let _ = tokio::fs::remove_file(manifest_file.clone()).await; }
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let dl_result = AsyncDownloader::new(client.clone(), manifest).await;
         if dl_result.is_err() { eprintln!("Failed to connect for repair manifest: {:?}", dl_result.err()); return false; }
         let mut dl = dl_result.unwrap().with_cancel_token(cancel_token.clone());
@@ -775,7 +775,7 @@ impl Kuro for Game {
 
         let manifest_file = p.clone().join("manifest.json");
         if manifest_file.exists() { let _ = tokio::fs::remove_file(manifest_file.clone()).await; }
-        let client = Arc::new(AsyncDownloader::setup_client().await);
+        let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let dl_result = AsyncDownloader::new(client.clone(), manifest).await;
         if dl_result.is_err() { eprintln!("Failed to connect for preload manifest: {:?}", dl_result.err()); return false; }
         let mut dl = dl_result.unwrap().with_cancel_token(cancel_token.clone());
