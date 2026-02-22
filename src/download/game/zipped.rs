@@ -35,7 +35,6 @@ impl Zipped for Game {
                     let pl = p.lock().unwrap();
                     pl(current, total, net_speed, disk_speed);
                 }).await;
-                if let Err(ref e) = dl { eprintln!("[zipped] download error for '{}': {}", url, e); }
                 if dl.is_err() { ret = false; break; }
             } else {
                 eprintln!("[zipped] failed to init downloader for '{}'", url);
