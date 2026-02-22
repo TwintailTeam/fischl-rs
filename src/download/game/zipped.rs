@@ -26,7 +26,7 @@ impl Zipped for Game {
 
             let staging = staging.clone();
             let p = progress.clone();
-            let c = AsyncDownloader::setup_client_h1().await;
+            let c = AsyncDownloader::setup_client(true).await;
             let dla = AsyncDownloader::new(Arc::new(c), url.as_str()).await;
             if dla.is_ok() {
                 let mut dlu = dla.unwrap().with_cancel_token(cancel_token.clone());
