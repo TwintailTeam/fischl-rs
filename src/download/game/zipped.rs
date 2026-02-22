@@ -26,8 +26,8 @@ impl Zipped for Game {
 
             let staging = staging.clone();
             let p = progress.clone();
-            let c = AsyncDownloader::setup_client().await;
-            let dla = AsyncDownloader::new(Arc::new(c), url).await;
+            let c = AsyncDownloader::setup_client_h1().await;
+            let dla = AsyncDownloader::new(Arc::new(c), url.as_str()).await;
             if dla.is_ok() {
                 let mut dlu = dla.unwrap().with_cancel_token(cancel_token.clone());
                 let file = dlu.get_filename().await.to_string();
@@ -35,8 +35,12 @@ impl Zipped for Game {
                     let pl = p.lock().unwrap();
                     pl(current, total, net_speed, disk_speed);
                 }).await;
-                if dl.is_ok() { ret = true; } else { ret = false; }
-            } else { ret = false; }
+                if let Err(ref e) = dl { eprintln!("[zipped] download error for '{}': {}", url, e); }
+                if dl.is_err() { ret = false; break; }
+            } else {
+                eprintln!("[zipped] failed to init downloader for '{}'", url);
+                ret = false; break;
+            }
         }
         ret
     }

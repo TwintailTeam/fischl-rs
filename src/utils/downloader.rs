@@ -247,9 +247,9 @@ pub struct AsyncDownloader {
 }
 
 impl AsyncDownloader {
-    pub async fn setup_client() -> ClientWithMiddleware {
+    pub async fn setup_client(h1_only: bool) -> ClientWithMiddleware {
         let retry_policy = ExponentialBackoff::builder().build_with_max_retries(30);
-        let c = reqwest::Client::builder().pool_max_idle_per_host(4).http2_adaptive_window(true).http2_keep_alive_interval(Duration::from_secs(30)).http2_keep_alive_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(30)).use_native_tls().build().unwrap();
+        let c = if h1_only { reqwest::Client::builder().pool_max_idle_per_host(2).http1_only().read_timeout(Duration::from_secs(60)).use_native_tls().build().unwrap() } else { reqwest::Client::builder().pool_max_idle_per_host(4).http2_adaptive_window(true).http2_keep_alive_interval(Duration::from_secs(30)).http2_keep_alive_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(30)).use_native_tls().build().unwrap() };
         reqwest_middleware::ClientBuilder::new(c).with(RetryTransientMiddleware::new_with_policy(retry_policy)).build()
     }
 
@@ -289,9 +289,10 @@ impl AsyncDownloader {
     }
 
     pub async fn get_filename(&self) -> &str {
-        if let Some(pos) = self.uri.replace('\\', "/").rfind(|c| c == '/') {
-            if !self.uri[pos + 1..].is_empty() {
-                return &self.uri[pos + 1..];
+        let clean = self.uri.split('?').next().unwrap_or(&self.uri);
+        if let Some(pos) = clean.replace('\\', "/").rfind(|c| c == '/') {
+            if !clean[pos + 1..].is_empty() {
+                return &clean[pos + 1..];
             }
         }
         "index.html"
