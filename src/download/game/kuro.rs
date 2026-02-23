@@ -322,7 +322,7 @@ impl Kuro for Game {
                         let stgs = staging.to_str().unwrap().to_string();
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
-                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
+                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs.clone());
                         let krd = krdiff.apply();
                         if krd {
                             let fsize = d.entries.iter().map(|f| f.size).sum();
@@ -341,7 +341,7 @@ impl Kuro for Game {
                         let stgs = staging.to_str().unwrap().to_string();
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
-                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
+                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs.clone());
                         let krd = krdiff.apply();
                         if krd {} else { eprintln!("Failed to apply krpdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
@@ -486,7 +486,7 @@ impl Kuro for Game {
                         let stgs = staging.to_str().unwrap().to_string();
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
-                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
+                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs.clone());
                         let krd = krdiff.apply();
                         if krd {} else { eprintln!("Failed to apply krdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
@@ -500,7 +500,7 @@ impl Kuro for Game {
                         let stgs = staging.to_str().unwrap().to_string();
                         let diffp = staging.join(d.dest.clone());
                         let stringed = diffp.to_str().unwrap().to_string();
-                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, Some(stgs.clone()));
+                        let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs.clone());
                         let krd = krdiff.apply();
                         if krd {} else { eprintln!("Failed to apply krpdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
