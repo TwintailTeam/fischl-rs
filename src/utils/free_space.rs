@@ -54,3 +54,19 @@ pub fn is_same_disk(path1: impl AsRef<Path>, path2: impl AsRef<Path>) -> bool {
     }
     false
 }
+
+pub fn get_disk_space(path: impl AsRef<Path>) -> (u64, u64) {
+    let mut disks = Disks::new_with_refreshed_list();
+    disks.sort_by(|a, b| {
+        let a = a.mount_point().as_os_str().len();
+        let b = b.mount_point().as_os_str().len();
+        a.cmp(&b).reverse()
+    });
+
+    let path = path.as_ref().to_owned();
+    for disk in disks.iter() {
+        let dp = disk.mount_point().to_path_buf();
+        if path.starts_with(dp) { return (disk.available_space(), disk.total_space()); }
+    }
+    (0, 0)
+}
