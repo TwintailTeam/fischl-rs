@@ -184,6 +184,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
             let mut prefix_found = !strip_head_path;
             let mut total_size: u64 = 0;
             let mut work_items: Vec<(usize, PathBuf, u64, Option<u32>)> = Vec::new();
+            #[cfg(unix)]
             let mut dir_modes: Vec<(PathBuf, u32)> = Vec::new();
 
             for i in 0..archive.len() {
@@ -231,6 +232,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                     loop {
                         let item = work.lock().unwrap().pop();
                         let (idx, out_path, file_size, unix_mode) = match item { Some(v) => v, None => break };
+                        #[cfg(not(unix))] let _ = unix_mode;
                         let mut f = match archive.by_index(idx) { Ok(f) => f, Err(_) => { extracted.fetch_add(file_size, Ordering::Relaxed); continue; } };
                         let mut out_file = match fs::File::create(&out_path) { Ok(f) => f, Err(_) => { extracted.fetch_add(file_size, Ordering::Relaxed); continue; } };
 
