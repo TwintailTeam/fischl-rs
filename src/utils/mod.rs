@@ -1,20 +1,19 @@
 use std::{fs, io};
 use std::hash::{BuildHasher, Hasher};
-use std::io::{Error, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
 use crate::utils::github_structs::GithubRelease;
+pub use downloader::SpeedTracker;
 
 pub(crate) mod github_structs;
 pub(crate) mod proto;
 pub mod downloader;
 pub mod free_space;
-pub use downloader::SpeedTracker;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FailedChunk {
@@ -161,15 +160,6 @@ pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mu
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
     }
     false
-}
-
-pub fn hpatchz<T: Into<PathBuf> + std::fmt::Debug>(bin_path: String, file: T, patch: T, output: T) -> io::Result<()> {
-    let output = Command::new(bin_path.as_str()).arg("-f").arg(file.into().as_os_str()).arg(patch.into().as_os_str()).arg(output.into().as_os_str()).output()?;
-
-    if String::from_utf8_lossy(output.stdout.as_slice()).contains("patch ok!") { Ok(()) } else {
-        let err = String::from_utf8_lossy(&output.stderr);
-        Err(Error::other(format!("Failed to apply hdiff patch: {err}")))
-    }
 }
 
 pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: String, strip_head_path: bool, progress_callback: F) where F: Fn(u64, u64) + Send + 'static {
