@@ -776,7 +776,7 @@ impl Sophon for Game {
                 if !chunks.exists() { fs::create_dir_all(chunks.clone()).unwrap(); }
                 let decoded = tokio::task::spawn_blocking(move || { SophonDiff::decode(&mut Cursor::new(&file_contents)).unwrap() }).await.unwrap();
 
-                let download_total: u64 = decoded.files.iter().map(|f| { f.chunks.iter().filter(|(v, _chunk)| version.as_str() == v.as_str()).map(|(_v, _chunk)| f.size).sum::<u64>() }).sum();
+                let download_total: u64 = decoded.files.iter().filter(|f| f.chunks.contains_key(&version)).map(|f| f.size).sum();
                 let download_counter = Arc::new(AtomicU64::new(0));
                 let active_verifications = Arc::new(AtomicU64::new(0));
                 let active_downloads = Arc::new(AtomicU64::new(0));
@@ -798,9 +798,7 @@ impl Sophon for Game {
                     async move {
                         loop {
                             tokio::time::sleep(Duration::from_millis(500)).await;
-                            let validated_download = download_counter.load(Ordering::SeqCst);
-                            let active_download = net_tracker.get_total();
-                            let download_current = validated_download.saturating_add(active_download).min(download_total);
+                            let download_current = download_counter.load(Ordering::SeqCst).min(download_total);
                             let net_speed = net_tracker.update();
                             let disk_speed = disk_tracker.update();
                             let verifying = active_verifications.load(Ordering::SeqCst);
@@ -886,7 +884,7 @@ impl Sophon for Game {
                                     if filtered.is_empty() { drop(permit); return; }
 
                                     if already_verified {
-                                        for (_v, chunk) in &filtered { download_counter.fetch_add(chunk.patch_size, Ordering::SeqCst); }
+                                        for (_v, _chunk) in &filtered { download_counter.fetch_add(chunk_task.size, Ordering::SeqCst); }
                                         drop(permit);
                                         return;
                                     }
@@ -897,7 +895,7 @@ impl Sophon for Game {
                                         let pn = chunk.patch_name.clone();
                                         let chunkp = chunks_dir.join(&pn);
 
-                                        let existing_size = if chunkp.exists() { chunkp.metadata().map(|m| m.len().min(chunk.patch_size)).unwrap_or(0) } else { 0 };
+                                        let existing_size = if chunkp.exists() { chunkp.metadata().map(|m| m.len().min(chunk_task.size)).unwrap_or(0) } else { 0 };
                                         if existing_size > 0 { download_counter.fetch_add(existing_size, Ordering::SeqCst); }
 
                                         active_verifications.fetch_add(1, Ordering::SeqCst);
@@ -905,7 +903,7 @@ impl Sophon for Game {
                                         active_verifications.fetch_sub(1, Ordering::SeqCst);
 
                                         if chunkp.exists() && cvalid {
-                                            let remaining = chunk.patch_size.saturating_sub(existing_size);
+                                            let remaining = chunk_task.size.saturating_sub(existing_size);
                                             if remaining > 0 { download_counter.fetch_add(remaining, Ordering::SeqCst); }
                                             continue;
                                         }
@@ -935,7 +933,7 @@ impl Sophon for Game {
                                             active_validations.fetch_add(1, Ordering::SeqCst);
                                             let cvalid = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
                                             active_validations.fetch_sub(1, Ordering::SeqCst);
-                                            if cvalid { success = true; break; } else {
+                                            if cvalid { download_counter.fetch_add(chunk_task.size.saturating_sub(existing_size), Ordering::SeqCst); success = true; break; } else {
                                                 last_error = "Checksum mismatch".to_string();
                                                 if chunkp.exists() { let _ = tokio::fs::remove_file(&chunkp).await; }
                                             }
