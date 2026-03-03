@@ -231,9 +231,9 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
         let path = "/games/hoyo/hk4e_global/testing";
 
-        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, |current, total, som1, som2, som3, som4, som5| {
+        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), true, |current, total, som1, som2, som3, som4, som5| {
             println!("current: {} | total: {}", current, total)
-        }, None).await;
+        }, None, None).await;
         if rep {
             println!("diff_game_sophon success!");
         } else {
@@ -265,7 +265,7 @@ mod tests {
 
         let rep = <Game as Sophon>::preload(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total, som1, som2, som3, som4, som5| {
             println!("current: {} | total: {}", current, total)
-        }, None).await;
+        }, None, None).await;
         if rep {
             println!("preload_game_sophon success!");
         } else {
