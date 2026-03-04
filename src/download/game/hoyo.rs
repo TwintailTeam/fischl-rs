@@ -298,6 +298,24 @@ impl Sophon for Game {
                 let progress_counter = Arc::new(AtomicU64::new(0));
                 let download_counter = Arc::new(AtomicU64::new(0));
                 let seen_patches: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
+
+                // Pre-populate counters from verified_files so the monitor starts at the correct value on resume
+                if !preloaded {
+                    if let Some(vf) = &verified_files {
+                        let v = vf.lock().unwrap();
+                        for file in &decoded.files {
+                            if !v.contains(&file.name) { continue; }
+                            progress_counter.fetch_add(file.size, Ordering::SeqCst);
+                            for (ver, chunk) in &file.chunks {
+                                if ver.as_str() != version.as_str() { continue; }
+                                if seen_patches.lock().unwrap().insert(chunk.patch_name.clone()) {
+                                    download_counter.fetch_add(chunk.patch_size, Ordering::SeqCst);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let net_tracker = Arc::new(SpeedTracker::new());
                 let disk_tracker = Arc::new(SpeedTracker::new());
                 let active_verifications = Arc::new(AtomicU64::new(0));
@@ -329,8 +347,7 @@ impl Sophon for Game {
                             if preloaded {
                                 progress(0, 0, install_current, install_total, 0, disk_speed, phase);
                             } else {
-                                let validated_download = download_counter.load(Ordering::SeqCst);
-                                let download_current = validated_download.saturating_add(net_tracker.get_total()).min(download_total);
+                                let download_current = download_counter.load(Ordering::SeqCst).min(download_total);
                                 let net_speed = net_tracker.update();
                                 progress(download_current, download_total, install_current, install_total, net_speed, disk_speed, phase);
                             }
@@ -543,19 +560,27 @@ impl Sophon for Game {
                                                         let mut dl = dl_result.unwrap().with_cancel_token(cancel_token.clone());
                                                         let net_t = net_tracker.clone();
                                                         let disk_t = disk_tracker.clone();
+                                                        let download_counter_cb = download_counter.clone();
                                                         let cur_size = chunkp.metadata().map(|m| m.len()).unwrap_or(0);
                                                         download_counter.fetch_add(cur_size, Ordering::SeqCst);
+                                                        let added_this_attempt = Arc::new(AtomicU64::new(cur_size));
+                                                        let added_this_attempt_cb = added_this_attempt.clone();
                                                         let mut last_written = cur_size;
                                                         let dlf = dl.download(chunkp.clone(), move |current, _, _, _| {
                                                             let diff = current.saturating_sub(last_written);
-                                                            if diff > 0 { net_t.add_bytes(diff); disk_t.add_bytes(diff); }
+                                                            if diff > 0 { net_t.add_bytes(diff); disk_t.add_bytes(diff); download_counter_cb.fetch_add(diff, Ordering::SeqCst); added_this_attempt_cb.fetch_add(diff, Ordering::SeqCst); }
                                                             last_written = current;
                                                         }).await;
-                                                        if let Err(e) = &dlf { download_counter.fetch_sub(cur_size, Ordering::SeqCst); last_error = e.to_string(); if chunkp.exists() { let _ = tokio::fs::remove_file(&chunkp).await; } continue; }
+                                                        let total_added = added_this_attempt.load(Ordering::SeqCst);
+                                                        if let Err(e) = &dlf {
+                                                            if cancel_token.as_ref().map(|t| t.load(Ordering::Relaxed)).unwrap_or(false) { cancelled = true; break; }
+                                                            // Network error: only roll back the pre-add, keep partial file for resume (matches preload behaviour)
+                                                            download_counter.fetch_sub(cur_size, Ordering::SeqCst); last_error = e.to_string(); continue;
+                                                        }
                                                         let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
                                                         if r { dl_success = true; break; } else {
-                                                            let written = chunkp.metadata().map(|m| m.len()).unwrap_or(0);
-                                                            download_counter.fetch_sub(written.min(download_counter.load(Ordering::SeqCst)), Ordering::SeqCst);
+                                                            // Corrupt data: roll back everything and delete so next attempt starts clean
+                                                            download_counter.fetch_sub(total_added, Ordering::SeqCst);
                                                             last_error = "Checksum mismatch".to_string();
                                                             if chunkp.exists() { let _ = tokio::fs::remove_file(&chunkp).await; }
                                                         }
@@ -645,12 +670,6 @@ impl Sophon for Game {
                                 }
                             }); // end task
                             retry_tasks.push(ct);
-                        }
-                        if let Some(token) = &cancel_token {
-                            if token.load(Ordering::Relaxed) {
-                                for t in retry_tasks { t.abort(); }
-                                return;
-                            }
                         }
                         for t in retry_tasks { let _ = t.await; }
                     });
@@ -1104,7 +1123,10 @@ impl Sophon for Game {
                                                 if diff > 0 { net_t.add_bytes(diff); disk_t.add_bytes(diff); download_counter_cb.fetch_add(diff, Ordering::SeqCst); }
                                                 last_written = current;
                                             }).await;
-                                            if let Err(e) = &dlf { download_counter.fetch_sub(cur_size, Ordering::SeqCst); last_error = e.to_string(); continue; }
+                                            if let Err(e) = &dlf {
+                                                if cancel_token.as_ref().map(|t| t.load(Ordering::Relaxed)).unwrap_or(false) { cancelled = true; break; }
+                                                download_counter.fetch_sub(cur_size, Ordering::SeqCst); last_error = e.to_string(); continue;
+                                            }
 
                                             active_validations.fetch_add(1, Ordering::SeqCst);
                                             let cvalid = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
@@ -1136,12 +1158,6 @@ impl Sophon for Game {
                                 }
                             }); // end task
                             retry_tasks.push(ct);
-                        }
-                        if let Some(token) = &cancel_token {
-                            if token.load(Ordering::Relaxed) {
-                                for t in retry_tasks { t.abort(); }
-                                return;
-                            }
                         }
                         for t in retry_tasks { let _ = t.await; }
                     });
