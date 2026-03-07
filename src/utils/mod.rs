@@ -162,7 +162,46 @@ pub fn wait_for_process<F>(process_name: &str, delay_ms: u64, retries: usize, mu
     false
 }
 
+fn merge_split_archive(first_part: &Path) -> Option<PathBuf> {
+    let parent = first_part.parent()?;
+    let first_name = first_part.file_name()?.to_str()?;
+    let dot_pos = first_name.rfind('.')?;
+    let suffix = &first_name[dot_pos + 1..];
+    if !suffix.chars().all(|c| c.is_ascii_digit()) { return None; }
+    let base_name = &first_name[..dot_pos];
+
+    let mut parts: Vec<(u32, PathBuf)> = fs::read_dir(parent).ok()?.flatten().filter_map(|e| {
+            let name = e.file_name();
+            let s = name.to_str()?;
+            let num_str = s.strip_prefix(base_name)?.strip_prefix('.')?;
+            if num_str.is_empty() || !num_str.chars().all(|c| c.is_ascii_digit()) { return None; }
+            Some((num_str.parse::<u32>().ok()?, e.path()))
+        }).collect();
+
+    if parts.is_empty() { return None; }
+    parts.sort_unstable_by_key(|(n, _)| *n);
+    let merged = parent.join(base_name);
+    let mut out = fs::File::create(&merged).ok()?;
+    for (_, part) in &parts {
+        let mut f = fs::File::open(part).ok()?;
+        io::copy(&mut f, &mut out).ok()?;
+        drop(f);
+        let _ = fs::remove_file(part);
+    }
+    Some(merged)
+}
+
 pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: String, strip_head_path: bool, progress_callback: F) where F: Fn(u64, u64) + Send + 'static {
+    // If the path ends with a numeric extension (.001, .002, …) and the base is .zip, merge all parts first
+    let archive_path = {
+        let last_ext = archive_path.rsplit('.').next().unwrap_or("");
+        let base_ext = if last_ext.chars().all(|c| c.is_ascii_digit()) { archive_path.rsplitn(2, '.').nth(1).unwrap_or("").rsplit('.').next().unwrap_or("") } else { "" };
+        if base_ext == "zip" {
+            match merge_split_archive(Path::new(&archive_path)) { Some(merged) => merged.to_str().unwrap_or(&archive_path).to_string(), None => archive_path }
+        } else {
+            archive_path
+        }
+    };
     let ext = get_full_extension(archive_path.as_str()).unwrap();
     match ext {
         "zip" | "krzip" => {
