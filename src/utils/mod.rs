@@ -479,10 +479,11 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
 pub(crate) fn get_full_extension(path: &str) -> Option<&str> {
     const MULTI_PART_EXTS: [&str; 2] = ["tar.gz", "tar.xz"];
     let file = path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(path);
-    for ext in MULTI_PART_EXTS {
-        if file.ends_with(ext) { return Some(ext); }
-    }
-    file.rsplit('.').nth(1).map(|_| file.rsplitn(2, '.').collect::<Vec<_>>()[0])
+    for ext in MULTI_PART_EXTS { if file.ends_with(ext) { return Some(ext); } }
+    let last_ext = file.rsplit('.').next()?;
+    // If last extension is all digits (e.g. .001, .002), it's a volume number — strip it
+    let effective = if last_ext.chars().all(|c| c.is_ascii_digit()) { file.rsplitn(2, '.').nth(1)? } else { file };
+    effective.rsplit('.').nth(1).map(|_| effective.rsplitn(2, '.').collect::<Vec<_>>()[0])
 }
 
 pub fn url_safe_token(len: usize) -> String {
