@@ -77,43 +77,6 @@ pub(crate) fn move_all<'a>(src: &'a Path, dst: &'a Path) -> Pin<Box<dyn Future<O
     })
 }
 
-pub(crate) async fn count_dir_bytes(path: &Path) -> io::Result<u64> {
-    let mut total = 0u64;
-    let mut dir = tokio::fs::read_dir(path).await?;
-    while let Some(entry) = dir.next_entry().await? {
-        let ty = entry.file_type().await?;
-        if ty.is_dir() {
-            total += Box::pin(count_dir_bytes(&entry.path())).await?;
-        } else if ty.is_file() {
-            total += entry.metadata().await?.len();
-        }
-    }
-    Ok(total)
-}
-
-pub(crate) async fn move_all_with_progress<F>(src: &Path, dst: &Path, total_bytes: u64, progress: &F) -> io::Result<u64> where F: Fn(u64, u64) + Send + Sync {
-    let mut moved_bytes = 0u64;
-    if !dst.exists() { tokio::fs::create_dir_all(dst).await?; }
-
-    let mut dir = tokio::fs::read_dir(src).await?;
-    while let Some(entry) = dir.next_entry().await? {
-        let entry_path = entry.path();
-        let dest_path = dst.join(entry.file_name());
-        let ty = entry.file_type().await?;
-
-        if ty.is_dir() {
-            moved_bytes += Box::pin(move_all_with_progress(&entry_path, &dest_path, total_bytes, progress)).await?;
-            tokio::fs::remove_dir_all(&entry_path).await?;
-        } else if ty.is_file() {
-            let file_size = entry.metadata().await?.len();
-            tokio::fs::rename(&entry_path, &dest_path).await?;
-            moved_bytes += file_size;
-            progress(moved_bytes, total_bytes);
-        }
-    }
-    Ok(moved_bytes)
-}
-
 pub(crate) async fn validate_checksum(file: &Path, checksum: String) -> bool {
     match tokio::fs::File::open(file).await {
         Ok(f) => {
