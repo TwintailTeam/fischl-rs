@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 impl Zipped for Game {
-    async fn download(url: String, game_path: String, use_patching_structure: bool, progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, cancel_token: Option<Arc<AtomicBool>>, _verified_files: Option<Arc<Mutex<std::collections::HashSet<String>>>>) -> bool {
+    async fn download(url: String, game_path: String, use_patching_structure: bool, use_repair_structure: bool, progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, cancel_token: Option<Arc<AtomicBool>>, _verified_files: Option<Arc<Mutex<std::collections::HashSet<String>>>>) -> bool {
         if url.is_empty() || game_path.is_empty() { return false; }
 
         let p = Path::new(game_path.as_str()).to_path_buf();
@@ -13,10 +13,18 @@ impl Zipped for Game {
         let dlr = p.join("repairing");
         let dlptch = p.join("patching");
 
-        if dlr.exists() { std::fs::remove_dir_all(&dlr).unwrap(); }
-        if use_patching_structure { if dlp.exists() { std::fs::remove_dir_all(&dlp).unwrap(); } } else { if dlptch.exists() { std::fs::remove_dir_all(&dlptch).unwrap(); } }
+        if use_patching_structure {
+            if dlp.exists() { std::fs::remove_dir_all(&dlp).unwrap(); }
+            if dlr.exists() { std::fs::remove_dir_all(&dlr).unwrap(); }
+        } else if use_repair_structure {
+            if dlp.exists() { std::fs::remove_dir_all(&dlp).unwrap(); }
+            if dlptch.exists() { std::fs::remove_dir_all(&dlptch).unwrap(); }
+        } else {
+            if dlr.exists() { std::fs::remove_dir_all(&dlr).unwrap(); }
+            if dlptch.exists() { std::fs::remove_dir_all(&dlptch).unwrap(); }
+        }
 
-        let staging = if use_patching_structure { dlptch.join("staging") } else { dlp.join("staging") };
+        let staging = if use_patching_structure { dlptch.join("staging") } else if use_repair_structure { dlr.join("staging") } else { dlp.join("staging") };
         if !staging.exists() { std::fs::create_dir_all(staging.clone()).unwrap(); }
         if let Some(token) = &cancel_token { if token.load(std::sync::atomic::Ordering::Relaxed) { return false; } }
 

@@ -86,7 +86,7 @@ mod tests {
     #[tokio::test]
     async fn download_fullgame_test() {
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Zipped>::download("".to_string(), path.parse().unwrap(), false, |current, total, som1, som2| {
+        let rep = <Game as Zipped>::download("".to_string(), path.parse().unwrap(), false, false, |current, total, som1, som2| {
             println!("current: {} | total: {}", current, total);
         }, None, None).await;
         if rep {
