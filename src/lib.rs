@@ -85,19 +85,8 @@ mod tests {
 
     #[tokio::test]
     async fn download_fullgame_test() {
-        let mut urls = Vec::<String>::new();
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.001"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.002"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.003"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.004"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.005"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.006"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.007"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.008"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/Audio_English(US)_5.5.0.zip"));
-
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Zipped>::download(urls, path.parse().unwrap(), |current, total, som1, som2| {
+        let rep = <Game as Zipped>::download("".to_string(), path.parse().unwrap(), false, |current, total, som1, som2| {
             println!("current: {} | total: {}", current, total);
         }, None, None).await;
         if rep {
@@ -162,7 +151,7 @@ mod tests {
         let path = "/games/kuro/wuwa_global/testing";
         let rep = <Game as Kuro>::patch(manifest.to_string(), chunk_res.to_string(), chunk_zip.to_string(), path.parse().unwrap(), false, |current,total, som1, som2, som3, som4, som5| {
             println!("current: {}, total: {}", current, total);
-        }, None).await;
+        }, None, None).await;
         if rep {
             println!("diff_game_kuro success!");
         } else {
@@ -200,7 +189,7 @@ mod tests {
         let path = "/games/kuro/wuwa_global/testing";
         let rep = <Game as Kuro>::preload(manifest.to_string(), chunkurl_res.to_string(), chunkurl_zip.to_string(), path.parse().unwrap(),|current,total, som1, som2, som3, som4, som5| {
             println!("current: {}, total: {}", current, total);
-        }, None).await;
+        }, None, None).await;
         if rep {
             println!("preload_game_kuro success!");
         } else {
