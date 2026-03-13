@@ -865,8 +865,10 @@ impl Kuro for Game {
             if !p.join(".preload").exists() { fs::File::create(p.join(".preload")).unwrap(); }
             if !staging.exists() { tokio::fs::create_dir_all(staging.clone()).await.unwrap(); }
 
-            let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
+            let download_total: u64 = files.resource.iter().map(|f| f.size).sum();
+            let install_total: u64 = download_total;
             let download_counter = Arc::new(AtomicU64::new(0));
+            let install_counter = Arc::new(AtomicU64::new(0));
             let active_verifications = Arc::new(AtomicU64::new(0));
             let active_downloads = Arc::new(AtomicU64::new(0));
             let net_tracker = Arc::new(SpeedTracker::new());
@@ -876,6 +878,7 @@ impl Kuro for Game {
 
             let monitor_handle = tokio::spawn({
                 let download_counter = download_counter.clone();
+                let install_counter = install_counter.clone();
                 let active_verifications = active_verifications.clone();
                 let active_downloads = active_downloads.clone();
                 let net_tracker = net_tracker.clone();
@@ -886,13 +889,14 @@ impl Kuro for Game {
                         tokio::time::sleep(Duration::from_millis(500)).await;
                         let on_disk = download_counter.load(Ordering::SeqCst);
                         let active_dl = net_tracker.get_total();
-                        let download_current = on_disk.saturating_add(active_dl).min(total_bytes);
+                        let download_current = on_disk.saturating_add(active_dl).min(download_total);
+                        let install_current = install_counter.load(Ordering::SeqCst);
                         let net_speed = net_tracker.update();
                         let disk_speed = disk_tracker.update();
                         let verifying = active_verifications.load(Ordering::SeqCst);
                         let downloading = active_downloads.load(Ordering::SeqCst);
                         let phase = if downloading > 0 { 2 } else if verifying > 0 { 4 } else { 0 };
-                        progress(download_current, total_bytes, 0, 0, net_speed, disk_speed, phase);
+                        progress(download_current, download_total, install_current, install_total, net_speed, disk_speed, phase);
                     }
                 }
             });
@@ -912,6 +916,7 @@ impl Kuro for Game {
                 let injector = injector.clone();
                 let file_sem = file_sem.clone();
                 let download_counter = download_counter.clone();
+                let install_counter = install_counter.clone();
                 let active_verifications = active_verifications.clone();
                 let active_downloads = active_downloads.clone();
                 let net_tracker = net_tracker.clone();
@@ -937,6 +942,7 @@ impl Kuro for Game {
 
                         let ct = tokio::spawn({
                             let download_counter = download_counter.clone();
+                            let install_counter = install_counter.clone();
                             let active_verifications = active_verifications.clone();
                             let active_downloads = active_downloads.clone();
                             let net_tracker = net_tracker.clone();
@@ -951,6 +957,7 @@ impl Kuro for Game {
                             async move {
                                 if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { drop(permit); return; } }
                                 let staging_dir = staging.join(chunk_task.dest.clone());
+                                let is_raw = !chunk_task.dest.ends_with(".krzip") && !chunk_task.dest.ends_with(".krdiff") && !chunk_task.dest.ends_with(".krpdiff");
 
                                 let mut already_verified = false;
                                 if let Some(vf) = &verified_files {
@@ -967,16 +974,16 @@ impl Kuro for Game {
                                 active_verifications.fetch_sub(1, Ordering::SeqCst);
 
                                 if staging_dir.exists() && cvalid {
-                                    if !already_verified {
-                                        if let Some(vf) = &verified_files { vf.lock().unwrap().insert(chunk_task.dest.clone()); }
-                                    }
+                                    if !already_verified { if let Some(vf) = &verified_files { vf.lock().unwrap().insert(chunk_task.dest.clone()); } }
                                     let remaining = chunk_task.size.saturating_sub(existing_size);
                                     if remaining > 0 { download_counter.fetch_add(remaining, Ordering::SeqCst); }
+                                    // File already staged and validated: credit to install bar
+                                    install_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                     return;
                                 }
 
                                 let pn = chunk_task.dest.clone();
-                                let chunk_base = if chunk_task.dest.ends_with(".krzip") || chunk_task.dest.ends_with(".krdiff") || chunk_task.dest.ends_with(".krpdiff") { chunk_res } else { chunks_zip + "/" };
+                                let chunk_base = if !is_raw { chunk_res } else { chunks_zip + "/" };
                                 let url = format!("{chunk_base}{pn}");
                                 let mut last_error = String::new();
                                 let mut success = false;
@@ -1003,6 +1010,8 @@ impl Kuro for Game {
                                     let cvalid = validate_checksum(staging_dir.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                     if cvalid {
                                         if !already_verified { if let Some(vf) = &verified_files { vf.lock().unwrap().insert(chunk_task.dest.clone()); } }
+                                        // File downloaded and validated: credit to install bar
+                                        install_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
                                         success = true;
                                         break;
                                     } else { last_error = format!("Checksum mismatch on attempt {}", attempt + 1); }
@@ -1041,7 +1050,7 @@ impl Kuro for Game {
                 eprintln!("Some preload files could not be downloaded. The update may still work.\n");
             }
             drop(failures);
-            progress(total_bytes, total_bytes, 0, 0, 0, 0, 0);
+            progress(download_total, download_total, install_total, install_total, 0, 0, 0);
             true
         } else { false }
     }
