@@ -895,7 +895,7 @@ impl Kuro for Game {
                         let disk_speed = disk_tracker.update();
                         let verifying = active_verifications.load(Ordering::SeqCst);
                         let downloading = active_downloads.load(Ordering::SeqCst);
-                        let phase = if downloading > 0 { 2 } else if verifying > 0 { 4 } else { 0 };
+                        let phase = if verifying > 0 || install_current > 0 { 4 } else if downloading > 0 { 2 } else { 0 };
                         progress(download_current, download_total, install_current, install_total, net_speed, disk_speed, phase);
                     }
                 }
