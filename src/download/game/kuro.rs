@@ -276,7 +276,6 @@ impl Kuro for Game {
 
             if preloaded {
                 // Preloaded: files already in staging, just extract/apply then move
-                // install_total = zip entries + diff entries only (no raw file tracking for preloaded)
                 let install_total: u64 = {
                     let mut t = 0u64;
                     if let Some(zips) = &files.zip_infos { for z in zips { t += z.entries.iter().map(|e| e.size).sum::<u64>(); } }
@@ -284,12 +283,37 @@ impl Kuro for Game {
                     if let Some(diffs) = &files.group_infos { for d in diffs { t += d.dst_files.iter().map(|f| f.size).sum::<u64>(); } }
                     t
                 };
+                let download_total: u64 = files.resource.iter().map(|f| f.size).sum();
                 let install_counter = Arc::new(AtomicU64::new(0));
+
+                // Pre-credit diffs already applied (file is deleted after apply, so absence = done)
+                if let Some(diffs) = &files.patch_infos {
+                    for d in diffs {
+                        if !staging.join(d.dest.clone()).exists() { install_counter.fetch_add(d.entries.iter().map(|e| e.size).sum::<u64>(), Ordering::SeqCst); }
+                    }
+                }
+                if let Some(diffs) = &files.group_infos {
+                    for d in diffs {
+                        if !staging.join(d.dest.clone()).exists() { install_counter.fetch_add(d.dst_files.iter().map(|f| f.size).sum::<u64>(), Ordering::SeqCst); }
+                    }
+                }
+
+                let monitor_handle = tokio::spawn({
+                    let install_counter = install_counter.clone();
+                    let progress = progress.clone();
+                    async move {
+                        loop {
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            let install_current = install_counter.load(Ordering::SeqCst);
+                            progress(download_total, download_total, install_current, install_total, 0, 0, 3);
+                        }
+                    }
+                });
 
                 // Extract zips (PGR) — stream bytes delta into install_counter via callback
                 if let Some(zips) = files.zip_infos {
                     for z in zips {
-                        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { return false; } }
+                        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { monitor_handle.abort(); return false; } }
                         let zp = staging.join(z.dest.clone());
                         if zp.exists() {
                             let zip_total: u64 = z.entries.iter().map(|e| e.size).sum();
@@ -298,52 +322,56 @@ impl Kuro for Game {
                             let ic = install_counter.clone();
                             let pc = progress.clone();
                             let it = install_total;
+                            let dt = download_total;
                             extract_archive_with_progress(zp.to_str().unwrap().to_string(), staging.to_str().unwrap().to_string(), false, move |done, _| {
                                 let prev = last_reported.load(Ordering::Relaxed);
                                 let delta = done.saturating_sub(prev);
-                                if delta > 0 { last_reported.store(done, Ordering::Relaxed); let v = ic.fetch_add(delta, Ordering::SeqCst) + delta; pc(0, 0, v, it, 0, 0, 3); }
+                                if delta > 0 { last_reported.store(done, Ordering::Relaxed); let v = ic.fetch_add(delta, Ordering::SeqCst) + delta; pc(dt, dt, v, it, 0, 0, 3); }
                             });
                             // Credit any final bytes below the callback's report threshold
                             let credited = install_counter.load(Ordering::SeqCst).saturating_sub(before);
                             let remainder = zip_total.saturating_sub(credited);
-                            if remainder > 0 { let v = install_counter.fetch_add(remainder, Ordering::SeqCst) + remainder; progress(0, 0, v, install_total, 0, 0, 3); }
+                            if remainder > 0 { let v = install_counter.fetch_add(remainder, Ordering::SeqCst) + remainder; progress(download_total, download_total, v, install_total, 0, 0, 3); }
                         }
                     }
                 }
-                // Apply krdiffs (Wuwa) — credit entries sum after apply
+                // Apply krdiffs (Wuwa) — skip if already applied (file deleted), credit entries sum after apply
                 if let Some(diffs) = files.patch_infos {
                     for d in diffs {
-                        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { return false; } }
-                        let stgs = staging.to_str().unwrap().to_string();
+                        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { monitor_handle.abort(); return false; } }
                         let diffp = staging.join(d.dest.clone());
+                        if !diffp.exists() { continue; } // already applied and pre-credited
+                        let stgs = staging.to_str().unwrap().to_string();
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs);
                         let krd = krdiff.apply();
-                        if krd { let fsize: u64 = d.entries.iter().map(|e| e.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(0, 0, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krdiff!") }
+                        if krd { let fsize: u64 = d.entries.iter().map(|e| e.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
-                // Apply krpdiffs (Wuwa) — same as krdiff, credit entries sum after apply
+                // Apply krpdiffs (Wuwa) — skip if already applied (file deleted), credit entries sum after apply
                 if let Some(diffs) = files.group_infos {
                     for d in diffs {
-                        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { return false; } }
-                        let stgs = staging.to_str().unwrap().to_string();
+                        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { monitor_handle.abort(); return false; } }
                         let diffp = staging.join(d.dest.clone());
+                        if !diffp.exists() { continue; } // already applied and pre-credited
+                        let stgs = staging.to_str().unwrap().to_string();
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs);
                         let krd = krdiff.apply();
-                        if krd { let fsize: u64 = d.dst_files.iter().map(|f| f.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(0, 0, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krpdiff!") }
+                        if krd { let fsize: u64 = d.dst_files.iter().map(|f| f.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krpdiff!") }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
 
+                monitor_handle.abort();
                 // Move phase (phase 5)
-                progress(0, 0, install_total, install_total, 0, 0, 5);
+                progress(download_total, download_total, install_total, install_total, 0, 0, 5);
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
                 if moved.is_ok() {
-                    tokio::fs::remove_dir_all(p.as_path()).await.unwrap();
+                    let _ = tokio::fs::remove_dir_all(p.as_path()).await;
                     if let Some(dfl) = files.delete_files {
-                        if !dfl.is_empty() { for df in dfl { let dfp = mainp.join(&df); if dfp.exists() { tokio::fs::remove_file(&dfp).await.unwrap(); } } }
+                        if !dfl.is_empty() { for df in dfl { let dfp = mainp.join(&df); if dfp.exists() { let _ = tokio::fs::remove_file(&dfp).await; } } }
                     }
                 }
                 true
