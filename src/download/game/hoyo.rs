@@ -308,6 +308,7 @@ impl Sophon for Game {
                 let delete_files_list = decoded.delete_files.clone();
                 let progress_counter = Arc::new(AtomicU64::new(0));
                 let download_counter = Arc::new(AtomicU64::new(0));
+                let startup_counted_patches: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
                 let seen_patches: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
                 let downloading_patches: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
 
@@ -319,12 +320,37 @@ impl Sophon for Game {
                 let active_validations = Arc::new(AtomicU64::new(0));
                 let progress = Arc::new(progress);
 
+                // Pre-populate install progress from verified_files so resumed patch jobs start at the correct output state.
+                if let Some(vf) = &verified_files {
+                    let v = vf.lock().unwrap();
+                    for file in &decoded.files {
+                        if !v.contains(&file.name) { continue; }
+                        progress_counter.fetch_add(file_patch_sizes.get(&file.name).copied().unwrap_or(0), Ordering::SeqCst);
+                    }
+                }
+                if !preloaded {
+                    let mut startup_seen = startup_counted_patches.lock().unwrap();
+                    for (patch_name, (patch_size, _patch_md5)) in &patch_infos {
+                        let chunk_path = chunks.join(patch_name);
+                        let existing_size = chunk_path.metadata().map(|m| m.len().min(*patch_size)).unwrap_or(0);
+                        if existing_size == 0 { continue; }
+                        if startup_seen.insert(patch_name.clone()) { download_counter.fetch_add(existing_size, Ordering::SeqCst); }
+                    }
+                }
+                if preloaded {
+                    let install_current = progress_counter.load(Ordering::SeqCst).min(install_total);
+                    progress(download_total, download_total, install_current, install_total, 0, 0, 3);
+                } else {
+                    let install_current = progress_counter.load(Ordering::SeqCst).min(install_total);
+                    let download_current = download_counter.load(Ordering::SeqCst).min(download_total);
+                    let phase = if install_current > 0 { 3 } else { 1 };
+                    progress(download_current, download_total, install_current, install_total, 0, 0, phase);
+                }
                 let monitor_handle = tokio::spawn({
                     let progress_counter = progress_counter.clone();
                     let download_counter = download_counter.clone();
                     let active_verifications = active_verifications.clone();
                     let active_downloads = active_downloads.clone();
-                    let active_installs = active_installs.clone();
                     let active_validations = active_validations.clone();
                     let net_tracker = net_tracker.clone();
                     let disk_tracker = disk_tracker.clone();
@@ -336,25 +362,15 @@ impl Sophon for Game {
                             let disk_speed = disk_tracker.update();
                             let verifying = active_verifications.load(Ordering::SeqCst);
                             let downloading = active_downloads.load(Ordering::SeqCst);
-                            let installing = active_installs.load(Ordering::SeqCst);
                             let validating = active_validations.load(Ordering::SeqCst);
-                            let phase = if preloaded { 3 } else if downloading > 0 { 2 } else if installing > 0 { 3 } else if validating > 0 { 4 } else if verifying > 0 { 1 } else { 0 };
-                            let download_current = if preloaded { download_total } else { download_counter.load(Ordering::SeqCst).min(download_total) };
+                            let phase = if downloading > 0 { 2 } else if validating > 0 { 4 } else if verifying > 0 { 1 } else { 0 };                            let download_current = if preloaded { download_total } else { download_counter.load(Ordering::SeqCst).min(download_total) };
                             let net_speed = if preloaded { 0 } else { net_tracker.update() };
                             progress(download_current, download_total, install_current, install_total, net_speed, disk_speed, phase);
                         }
                     }
                 });
 
-                // Pre-populate install progress from verified_files so resumed patch jobs start at the correct output state.
-                if let Some(vf) = &verified_files {
-                    let v = vf.lock().unwrap();
-                    for file in &decoded.files {
-                        if !v.contains(&file.name) { continue; }
-                        progress_counter.fetch_add(file_patch_sizes.get(&file.name).copied().unwrap_or(0), Ordering::SeqCst);
-                    }
-                }
-
+                let patch_tasks = decoded.files.clone();
                 let injector = Arc::new(Injector::<PatchFile>::new());
                 let mut workers = Vec::new();
                 let mut stealers_list = Vec::new();
@@ -379,7 +395,6 @@ impl Sophon for Game {
                     let download_counter = download_counter.clone();
                     let active_verifications = active_verifications.clone();
                     let active_downloads = active_downloads.clone();
-                    let active_installs = active_installs.clone();
                     let active_validations = active_validations.clone();
                     let net_tracker = net_tracker.clone();
                     let disk_tracker = disk_tracker.clone();
@@ -395,6 +410,7 @@ impl Sophon for Game {
                     let patch_infos = Arc::new(patch_infos.clone());
                     let file_patch_sizes = Arc::new(file_patch_sizes.clone());
                     let downloading_patches = downloading_patches.clone();
+                    let startup_counted_patches = startup_counted_patches.clone();
                     let progress_cb = progress.clone();
 
                     let mut retry_tasks = Vec::new();
@@ -412,7 +428,6 @@ impl Sophon for Game {
                                 let progress_counter = progress_counter.clone();
                                 let active_verifications = active_verifications.clone();
                                 let active_downloads = active_downloads.clone();
-                                let active_installs = active_installs.clone();
                                 let active_validations = active_validations.clone();
                                 let net_tracker = net_tracker.clone();
                                 let disk_tracker = disk_tracker.clone();
@@ -429,6 +444,7 @@ impl Sophon for Game {
                                 let patch_infos = patch_infos.clone();
                                 let file_patch_sizes = file_patch_sizes.clone();
                                 let downloading_patches = downloading_patches.clone();
+                                let startup_counted_patches = startup_counted_patches.clone();
                                 let progress_cb = progress_cb.clone();
                                 async move {
                                     if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { drop(permit); return; } }
@@ -464,7 +480,6 @@ impl Sophon for Game {
 
                                     // File has patches to apply
                                     if !filtered.is_empty() {
-                                        active_installs.fetch_add(1, Ordering::SeqCst);
                                         for (_v, chunk) in filtered.into_iter() {
                                             if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { drop(permit); return; } }
                                             let output_path = output_path.clone();
@@ -551,8 +566,9 @@ impl Sophon for Game {
                                                     }
 
                                                     let existing_size = chunkp.metadata().map(|m| m.len().min(patch_size)).unwrap_or(0);
+                                                    let startup_counted = startup_counted_patches.lock().unwrap().contains(&pn);
                                                     let counted_bytes = Arc::new(AtomicU64::new(existing_size));
-                                                    if existing_size > 0 { download_counter.fetch_add(existing_size, Ordering::SeqCst); }
+                                                    if existing_size > 0 && !startup_counted { download_counter.fetch_add(existing_size, Ordering::SeqCst); }
                                                     active_verifications.fetch_add(1, Ordering::SeqCst);
                                                     let cvalid = chunkp.exists() && validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
                                                     active_verifications.fetch_sub(1, Ordering::SeqCst);
@@ -562,6 +578,7 @@ impl Sophon for Game {
                                                             let remaining = patch_size.saturating_sub(existing_size);
                                                             if remaining > 0 { download_counter.fetch_add(remaining, Ordering::SeqCst); }
                                                         }
+                                                        startup_counted_patches.lock().unwrap().remove(&pn);
                                                         downloading_patches.lock().unwrap().remove(&pn);
                                                         break;
                                                     }
@@ -600,11 +617,13 @@ impl Sophon for Game {
                                                             let remaining = patch_size.saturating_sub(counted);
                                                             if remaining > 0 { download_counter.fetch_add(remaining, Ordering::SeqCst); }
                                                             seen_patches.lock().unwrap().insert(pn.clone());
+                                                            startup_counted_patches.lock().unwrap().remove(&pn);
                                                             dl_success = true;
                                                             break;
                                                         } else {
                                                             let rollback = counted_bytes.swap(0, Ordering::SeqCst);
                                                             if rollback > 0 { download_counter.fetch_sub(rollback, Ordering::SeqCst); }
+                                                            startup_counted_patches.lock().unwrap().remove(&pn);
                                                             last_error = "Checksum mismatch".to_string();
                                                             if chunkp.exists() { let _ = tokio::fs::remove_file(&chunkp).await; }
                                                         }
@@ -615,79 +634,21 @@ impl Sophon for Game {
                                                     if !dl_success { eprintln!("Failed to download patch chunk {}/{} after 3 retries: {}", chunk_base, pn, last_error); continue; }
                                                     break;
                                                 }
-                                                if chunkp.exists() {
-                                                    let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
-                                                    if r {
-                                                        if chunk.original_filename.is_empty() {
-                                                            // Chunk is not a hdiff patchable, copy it over
-                                                            let mut chunk_file = match fs::File::open(chunkp.as_path()) { Ok(f) => f, Err(e) => { eprintln!("Failed to open chunk file {}: {}", chunkp.display(), e); continue; } };
-                                                            if let Err(e) = chunk_file.seek(SeekFrom::Start(chunk.patch_offset)) { eprintln!("Failed to seek chunk file: {}", e); continue; }
-                                                            let mut r = vec![0u8; chunk.patch_length as usize];
-                                                            if let Err(e) = chunk_file.read_exact(&mut r) { eprintln!("Failed to read chunk file: {}", e); continue; }
-                                                            let is_hdiff = r.starts_with(b"HDIFF13");
-
-                                                            // nap edge case ffs
-                                                            if is_hdiff {
-                                                                let mut output = fs::File::create(&diffp).unwrap();
-                                                                let mut cursor = Cursor::new(&r);
-                                                                copy(&mut cursor, &mut output).unwrap();
-                                                                output.flush().unwrap();
-                                                                drop(output);
-
-                                                                let of = mainp.join(&ff.name.clone());
-                                                                let is_dir = ff.name.ends_with("/");
-                                                                if !of.exists() {
-                                                                    if is_dir {
-                                                                        fs::create_dir_all(&of).unwrap();
-                                                                    } else {
-                                                                        if let Some(parent) = of.parent() { fs::create_dir_all(parent).unwrap(); }
-                                                                        fs::File::create(&of).unwrap();
-                                                                    }
-                                                                } else {
-                                                                    let _r = fs::remove_file(&of);
-                                                                    match _r { Ok(_) => { fs::File::create(&of).unwrap(); } Err(_) => {} }
-                                                                }
-                                                                let mut hdiff = HDiff::new(of.to_str().unwrap().to_string(), diffp.to_str().unwrap().to_string().to_string(), output_path.to_str().unwrap().to_string());
-                                                                let status = hdiff.apply();
-                                                                if !status { eprintln!("Failed to hpatchz without original_filename (no preload)"); }
-                                                            } else {
-                                                                let mut output = fs::File::create(&output_path).unwrap();
-                                                                let mut cursor = Cursor::new(&r);
-                                                                copy(&mut cursor, &mut output).unwrap();
-                                                                output.flush().unwrap();
-                                                                drop(output);
-                                                            }
-                                                        } else {
-                                                            // Chunk is hdiff patchable, patch it
-                                                            let mut output = match fs::File::create(&diffp) { Ok(f) => f, Err(e) => { eprintln!("Failed to create diff file {}: {}", diffp.display(), e); continue; } };
-                                                            let mut chunk_file = match fs::File::open(chunkp.as_path()) { Ok(f) => f, Err(e) => { eprintln!("Failed to open chunk file {}: {}", chunkp.display(), e); continue; } };
-                                                            if let Err(e) = chunk_file.seek(SeekFrom::Start(chunk.patch_offset)) { eprintln!("Failed to seek chunk file: {}", e); continue; }
-                                                            let mut r = chunk_file.take(chunk.patch_length);
-                                                            if let Err(e) = copy(&mut r, &mut output) { eprintln!("Failed to copy chunk data: {}", e); continue; }
-                                                            let _ = output.flush();
-                                                            drop(output);
-
-                                                            let of = mainp.join(&chunk.original_filename);
-                                                            if of.exists() {
-                                                                let mut hdiff = HDiff::new(of.to_str().unwrap().to_string(), diffp.to_str().unwrap().to_string().to_string(), output_path.to_str().unwrap().to_string());
-                                                                let status = hdiff.apply();
-                                                                if !status { eprintln!("Failed to hpatchz!"); } }
-                                                        }
-                                                    } else { continue; }
-                                                }
+                                                continue;
                                             } // preload check end
                                         }
-                                        active_installs.fetch_sub(1, Ordering::SeqCst);
-                                        active_validations.fetch_add(1, Ordering::SeqCst);
-                                        let r2 = validate_checksum(output_path.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
-                                        active_validations.fetch_sub(1, Ordering::SeqCst);
-                                        if r2 {
-                                            let install_current = progress_counter.fetch_add(file_patch_size, Ordering::SeqCst) + file_patch_size;
-                                            let download_current = if preloaded { download_total } else { download_counter.load(Ordering::SeqCst).min(download_total) };
-                                            progress_cb(download_current, download_total, install_current.min(install_total), install_total, 0, 0, 3);
-                                            if let Some(vf) = &verified_files {
-                                                let mut v = vf.lock().unwrap();
-                                                v.insert(chunk_task.name.clone());
+                                        if preloaded {
+                                            active_validations.fetch_add(1, Ordering::SeqCst);
+                                            let r2 = validate_checksum(output_path.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+                                            active_validations.fetch_sub(1, Ordering::SeqCst);
+                                            if r2 {
+                                                let install_current = progress_counter.fetch_add(file_patch_size, Ordering::SeqCst) + file_patch_size;
+                                                let download_current = download_total;
+                                                progress_cb(download_current, download_total, install_current.min(install_total), install_total, 0, 0, 3);
+                                                if let Some(vf) = &verified_files {
+                                                    let mut v = vf.lock().unwrap();
+                                                    v.insert(chunk_task.name.clone());
+                                                }
                                             }
                                         }
                                     }
@@ -701,6 +662,195 @@ impl Sophon for Game {
                     handles.push(handle);
                 }
                 for handle in handles { let _ = handle.await; }
+
+                if !preloaded {
+                    if let Some(token) = &cancel_token {
+                        if token.load(Ordering::Relaxed) {
+                            monitor_handle.abort();
+                            return false;
+                        }
+                    }
+
+                    let apply_injector = Arc::new(Injector::<PatchFile>::new());
+                    let mut apply_workers = Vec::new();
+                    let mut apply_stealers_list = Vec::new();
+                    for _ in 0..5 {
+                        let w = Worker::<PatchFile>::new_fifo();
+                        apply_stealers_list.push(w.stealer());
+                        apply_workers.push(w);
+                    }
+                    let apply_stealers = Arc::new(apply_stealers_list);
+                    for task in patch_tasks.into_iter() { apply_injector.push(task); }
+                    let apply_file_sem = Arc::new(tokio::sync::Semaphore::new(5));
+
+                    let mut apply_handles = Vec::with_capacity(5);
+                    for _i in 0..apply_workers.len() {
+                        let local_worker = apply_workers.pop().unwrap();
+                        let stealers = apply_stealers.clone();
+                        let injector = apply_injector.clone();
+                        let file_sem = apply_file_sem.clone();
+
+                        let progress_counter = progress_counter.clone();
+                        let download_counter = download_counter.clone();
+                        let active_verifications = active_verifications.clone();
+                        let active_installs = active_installs.clone();
+                        let active_validations = active_validations.clone();
+                        let chunks_dir = chunks.clone();
+                        let staging_dir = staging.clone();
+                        let version = version.clone();
+                        let cancel_token = cancel_token.clone();
+                        let mainp = mainp.clone();
+                        let verified_files = verified_files.clone();
+                        let file_patch_sizes = Arc::new(file_patch_sizes.clone());
+                        let progress_cb = progress.clone();
+
+                        let mut retry_tasks = Vec::new();
+                        let handle = tokio::task::spawn(async move {
+                            loop {
+                                if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { break; } }
+                                let job = local_worker.pop().or_else(|| injector.steal().success()).or_else(|| {
+                                    for s in stealers.iter() { if let Steal::Success(t) = s.steal() { return Some(t); } }
+                                    None
+                                });
+                                let Some(chunk_task) = job else { break; };
+                                let permit = file_sem.clone().acquire_owned().await.unwrap();
+
+                                let ct = tokio::spawn({
+                                    let progress_counter = progress_counter.clone();
+                                    let download_counter = download_counter.clone();
+                                    let active_verifications = active_verifications.clone();
+                                    let active_installs = active_installs.clone();
+                                    let active_validations = active_validations.clone();
+                                    let chunks_dir = chunks_dir.clone();
+                                    let staging_dir = staging_dir.clone();
+                                    let version = version.clone();
+                                    let cancel_token = cancel_token.clone();
+                                    let mainp = mainp.clone();
+                                    let verified_files = verified_files.clone();
+                                    let file_patch_sizes = file_patch_sizes.clone();
+                                    let progress_cb = progress_cb.clone();
+                                    async move {
+                                        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { drop(permit); return; } }
+
+                                        let filtered: Vec<(String, PatchChunk)> = chunk_task.chunks.clone().into_iter().filter(|(v, _chunk)| version.as_str() == v.as_str()).collect();
+                                        let file_patch_size = file_patch_sizes.get(&chunk_task.name).copied().unwrap_or(0);
+                                        let ff = Arc::new(chunk_task.clone());
+                                        let output_path = staging_dir.join(chunk_task.name.clone());
+
+                                        active_verifications.fetch_add(1, Ordering::SeqCst);
+                                        let already_verified = if let Some(vf) = &verified_files {
+                                            let v = vf.lock().unwrap();
+                                            v.contains(&chunk_task.name)
+                                        } else { false };
+                                        let valid = output_path.exists() && if already_verified { true } else { validate_checksum(output_path.as_path(), chunk_task.clone().md5.to_ascii_lowercase()).await };
+                                        active_verifications.fetch_sub(1, Ordering::SeqCst);
+
+                                        if output_path.exists() && valid {
+                                            if !already_verified {
+                                                let install_current = progress_counter.fetch_add(file_patch_size, Ordering::SeqCst) + file_patch_size;
+                                                let download_current = download_counter.load(Ordering::SeqCst).min(download_total);
+                                                progress_cb(download_current, download_total, install_current.min(install_total), install_total, 0, 0, 3);
+                                                if let Some(vf) = &verified_files {
+                                                    let mut v = vf.lock().unwrap();
+                                                    v.insert(chunk_task.name.clone());
+                                                }
+                                            }
+                                            drop(permit);
+                                            return;
+                                        } else {
+                                            if let Some(parent) = output_path.parent() { fs::create_dir_all(parent).unwrap(); }
+                                        }
+
+                                        if !filtered.is_empty() {
+                                            active_installs.fetch_add(1, Ordering::SeqCst);
+                                            for (_v, chunk) in filtered.into_iter() {
+                                                if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { active_installs.fetch_sub(1, Ordering::SeqCst); drop(permit); return; } }
+                                                let output_path = output_path.clone();
+
+                                                let chunkp = chunks_dir.join(chunk.patch_name.clone());
+                                                let diffp = chunks_dir.join(format!("{}.hdiff", chunk.patch_md5));
+                                                let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
+                                                if r {
+                                                    if chunk.original_filename.is_empty() {
+                                                        let mut chunk_file = match fs::File::open(chunkp.as_path()) { Ok(f) => f, Err(e) => { eprintln!("Failed to open chunk file {}: {}", chunkp.display(), e); continue; } };
+                                                        if let Err(e) = chunk_file.seek(SeekFrom::Start(chunk.patch_offset)) { eprintln!("Failed to seek chunk file: {}", e); continue; }
+                                                        let mut r = vec![0u8; chunk.patch_length as usize];
+                                                        if let Err(e) = chunk_file.read_exact(&mut r) { eprintln!("Failed to read chunk file: {}", e); continue; }
+                                                        let is_hdiff = r.starts_with(b"HDIFF13");
+
+                                                        if is_hdiff {
+                                                            let mut output = fs::File::create(&diffp).unwrap();
+                                                            let mut cursor = Cursor::new(&r);
+                                                            copy(&mut cursor, &mut output).unwrap();
+                                                            output.flush().unwrap();
+                                                            drop(output);
+
+                                                            let of = mainp.join(&ff.name.clone());
+                                                            let is_dir = ff.name.ends_with("/");
+                                                            if !of.exists() {
+                                                                if is_dir {
+                                                                    fs::create_dir_all(&of).unwrap();
+                                                                } else {
+                                                                    if let Some(parent) = of.parent() { fs::create_dir_all(parent).unwrap(); }
+                                                                    fs::File::create(&of).unwrap();
+                                                                }
+                                                            } else {
+                                                                let _r = fs::remove_file(&of);
+                                                                match _r { Ok(_) => { fs::File::create(&of).unwrap(); } Err(_) => {} }
+                                                            }
+                                                            let mut hdiff = HDiff::new(of.to_str().unwrap().to_string(), diffp.to_str().unwrap().to_string().to_string(), output_path.to_str().unwrap().to_string());
+                                                            let status = hdiff.apply();
+                                                            if !status { eprintln!("Failed to hpatchz without original_filename (no preload)"); }
+                                                        } else {
+                                                            let mut output = fs::File::create(&output_path).unwrap();
+                                                            let mut cursor = Cursor::new(&r);
+                                                            copy(&mut cursor, &mut output).unwrap();
+                                                            output.flush().unwrap();
+                                                            drop(output);
+                                                        }
+                                                    } else {
+                                                        let mut output = match fs::File::create(&diffp) { Ok(f) => f, Err(e) => { eprintln!("Failed to create diff file {}: {}", diffp.display(), e); continue; } };
+                                                        let mut chunk_file = match fs::File::open(chunkp.as_path()) { Ok(f) => f, Err(e) => { eprintln!("Failed to open chunk file {}: {}", chunkp.display(), e); continue; } };
+                                                        if let Err(e) = chunk_file.seek(SeekFrom::Start(chunk.patch_offset)) { eprintln!("Failed to seek chunk file: {}", e); continue; }
+                                                        let mut r = chunk_file.take(chunk.patch_length);
+                                                        if let Err(e) = copy(&mut r, &mut output) { eprintln!("Failed to copy chunk data: {}", e); continue; }
+                                                        let _ = output.flush();
+                                                        drop(output);
+
+                                                        let of = mainp.join(&chunk.original_filename);
+                                                        if of.exists() {
+                                                            let mut hdiff = HDiff::new(of.to_str().unwrap().to_string(), diffp.to_str().unwrap().to_string().to_string(), output_path.to_str().unwrap().to_string());
+                                                            let status = hdiff.apply();
+                                                            if !status { eprintln!("Failed to hpatchz!"); }
+                                                        }
+                                                    }
+                                                } else { continue; }
+                                            }
+                                            active_installs.fetch_sub(1, Ordering::SeqCst);
+                                            active_validations.fetch_add(1, Ordering::SeqCst);
+                                            let r2 = validate_checksum(output_path.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
+                                            active_validations.fetch_sub(1, Ordering::SeqCst);
+                                            if r2 {
+                                                let install_current = progress_counter.fetch_add(file_patch_size, Ordering::SeqCst) + file_patch_size;
+                                                let download_current = download_counter.load(Ordering::SeqCst).min(download_total);
+                                                progress_cb(download_current, download_total, install_current.min(install_total), install_total, 0, 0, 3);
+                                                if let Some(vf) = &verified_files {
+                                                    let mut v = vf.lock().unwrap();
+                                                    v.insert(chunk_task.name.clone());
+                                                }
+                                            }
+                                        }
+                                        drop(permit);
+                                    }
+                                });
+                                retry_tasks.push(ct);
+                            }
+                            for t in retry_tasks { let _ = t.await; }
+                        });
+                        apply_handles.push(handle);
+                    }
+                    for handle in apply_handles { let _ = handle.await; }
+                }
 
                 if let Some(token) = &cancel_token {
                     if token.load(Ordering::Relaxed) {
