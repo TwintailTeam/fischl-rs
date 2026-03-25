@@ -291,30 +291,25 @@ impl Sophon for Game {
                 if !staging.exists() && !preloaded { fs::create_dir_all(staging.clone()).unwrap(); }
                 let decoded = tokio::task::spawn_blocking(move || { SophonDiff::decode(&mut Cursor::new(&file_contents)).unwrap() }).await.unwrap();
 
-                let install_total: u64 = decoded.files.iter().filter(|f| f.chunks.contains_key(&version)).map(|f| f.size).sum();
-                let mut seen_total: std::collections::HashSet<String> = std::collections::HashSet::new();
-                let download_total: u64 = decoded.files.iter().filter(|f| f.chunks.contains_key(&version)).flat_map(|f| f.chunks.iter().filter(|(v, _)| v.as_str() == version.as_str())).filter(|(_, c)| seen_total.insert(c.patch_name.clone())).map(|(_, c)| c.patch_size).sum();
+                let mut patch_infos: std::collections::HashMap<String, (u64, String)> = std::collections::HashMap::new();
+                let mut file_patch_sizes: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+                for file in decoded.files.iter().filter(|f| f.chunks.contains_key(&version)) {
+                    let mut file_patch_size = 0u64;
+                    for (ver, chunk) in &file.chunks {
+                        if ver.as_str() != version.as_str() { continue; }
+                        let patch_size = chunk.patch_size.max(chunk.patch_offset.saturating_add(chunk.patch_length));
+                        patch_infos.entry(chunk.patch_name.clone()).and_modify(|(size, _)| *size = (*size).max(patch_size)).or_insert((patch_size, chunk.patch_md5.clone()));
+                        file_patch_size = file_patch_size.saturating_add(chunk.patch_length);
+                    }
+                    file_patch_sizes.insert(file.name.clone(), file_patch_size);
+                }
+                let download_total: u64 = patch_infos.values().map(|(size, _)| *size).sum();
+                let install_total: u64 = file_patch_sizes.values().copied().sum();
                 let delete_files_list = decoded.delete_files.clone();
                 let progress_counter = Arc::new(AtomicU64::new(0));
                 let download_counter = Arc::new(AtomicU64::new(0));
                 let seen_patches: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
-
-                // Pre-populate counters from verified_files so the monitor starts at the correct value on resume
-                if !preloaded {
-                    if let Some(vf) = &verified_files {
-                        let v = vf.lock().unwrap();
-                        for file in &decoded.files {
-                            if !v.contains(&file.name) { continue; }
-                            progress_counter.fetch_add(file.size, Ordering::SeqCst);
-                            for (ver, chunk) in &file.chunks {
-                                if ver.as_str() != version.as_str() { continue; }
-                                if seen_patches.lock().unwrap().insert(chunk.patch_name.clone()) {
-                                    download_counter.fetch_add(chunk.patch_size, Ordering::SeqCst);
-                                }
-                            }
-                        }
-                    }
-                }
+                let downloading_patches: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
 
                 let net_tracker = Arc::new(SpeedTracker::new());
                 let disk_tracker = Arc::new(SpeedTracker::new());
@@ -343,17 +338,22 @@ impl Sophon for Game {
                             let downloading = active_downloads.load(Ordering::SeqCst);
                             let installing = active_installs.load(Ordering::SeqCst);
                             let validating = active_validations.load(Ordering::SeqCst);
-                            let phase = if downloading > 0 { 2 } else if installing > 0 { 3 } else if validating > 0 { 4 } else if verifying > 0 { 1 } else { 0 };
-                            if preloaded {
-                                progress(0, 0, install_current, install_total, 0, disk_speed, phase);
-                            } else {
-                                let download_current = download_counter.load(Ordering::SeqCst).min(download_total);
-                                let net_speed = net_tracker.update();
-                                progress(download_current, download_total, install_current, install_total, net_speed, disk_speed, phase);
-                            }
+                            let phase = if preloaded { 3 } else if downloading > 0 { 2 } else if installing > 0 { 3 } else if validating > 0 { 4 } else if verifying > 0 { 1 } else { 0 };
+                            let download_current = if preloaded { download_total } else { download_counter.load(Ordering::SeqCst).min(download_total) };
+                            let net_speed = if preloaded { 0 } else { net_tracker.update() };
+                            progress(download_current, download_total, install_current, install_total, net_speed, disk_speed, phase);
                         }
                     }
                 });
+
+                // Pre-populate install progress from verified_files so resumed patch jobs start at the correct output state.
+                if let Some(vf) = &verified_files {
+                    let v = vf.lock().unwrap();
+                    for file in &decoded.files {
+                        if !v.contains(&file.name) { continue; }
+                        progress_counter.fetch_add(file_patch_sizes.get(&file.name).copied().unwrap_or(0), Ordering::SeqCst);
+                    }
+                }
 
                 let injector = Arc::new(Injector::<PatchFile>::new());
                 let mut workers = Vec::new();
@@ -392,6 +392,10 @@ impl Sophon for Game {
                     let mainp = mainp.clone();
                     let verified_files = verified_files.clone();
                     let seen_patches = seen_patches.clone();
+                    let patch_infos = Arc::new(patch_infos.clone());
+                    let file_patch_sizes = Arc::new(file_patch_sizes.clone());
+                    let downloading_patches = downloading_patches.clone();
+                    let progress_cb = progress.clone();
 
                     let mut retry_tasks = Vec::new();
                     let handle = tokio::task::spawn(async move {
@@ -422,44 +426,35 @@ impl Sophon for Game {
                                 let verified_files = verified_files.clone();
                                 let download_counter = download_counter.clone();
                                 let seen_patches = seen_patches.clone();
+                                let patch_infos = patch_infos.clone();
+                                let file_patch_sizes = file_patch_sizes.clone();
+                                let downloading_patches = downloading_patches.clone();
+                                let progress_cb = progress_cb.clone();
                                 async move {
                                     if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { drop(permit); return; } }
 
-                                    let already_verified = if let Some(vf) = &verified_files {
-                                        let v = vf.lock().unwrap();
-                                        v.contains(&chunk_task.name)
-                                    } else { false };
                                     let filtered: Vec<(String, PatchChunk)> = chunk_task.chunks.clone().into_iter().filter(|(v, _chunk)| version.as_str() == v.as_str()).collect();
-                                    if already_verified {
-                                        progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
-                                        if !preloaded {
-                                            for (_, chunk) in &filtered {
-                                                if !seen_patches.lock().unwrap().insert(chunk.patch_name.clone()) { continue; }
-                                                download_counter.fetch_add(chunk.patch_size, Ordering::SeqCst);
-                                            }
-                                        }
-                                        drop(permit);
-                                        return;
-                                    }
-
+                                    let file_patch_size = file_patch_sizes.get(&chunk_task.name).copied().unwrap_or(0);
                                     let ff = Arc::new(chunk_task.clone());
                                     let output_path = staging_dir.join(chunk_task.name.clone());
 
                                     active_verifications.fetch_add(1, Ordering::SeqCst);
-                                    let valid = validate_checksum(output_path.as_path(), chunk_task.clone().md5.to_ascii_lowercase()).await;
+                                    let already_verified = if let Some(vf) = &verified_files {
+                                        let v = vf.lock().unwrap();
+                                        v.contains(&chunk_task.name)
+                                    } else { false };
+                                    let valid = output_path.exists() && if already_verified { true } else { validate_checksum(output_path.as_path(), chunk_task.clone().md5.to_ascii_lowercase()).await };
                                     active_verifications.fetch_sub(1, Ordering::SeqCst);
 
                                     if output_path.exists() && valid {
-                                        progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
-                                        if !preloaded {
-                                            for (_, chunk) in &filtered {
-                                                if !seen_patches.lock().unwrap().insert(chunk.patch_name.clone()) { continue; }
-                                                download_counter.fetch_add(chunk.patch_size, Ordering::SeqCst);
+                                        if !already_verified {
+                                            let install_current = progress_counter.fetch_add(file_patch_size, Ordering::SeqCst) + file_patch_size;
+                                            let download_current = if preloaded { download_total } else { download_counter.load(Ordering::SeqCst).min(download_total) };
+                                            progress_cb(download_current, download_total, install_current.min(install_total), install_total, 0, 0, 3);
+                                            if let Some(vf) = &verified_files {
+                                                let mut v = vf.lock().unwrap();
+                                                v.insert(chunk_task.name.clone());
                                             }
-                                        }
-                                        if let Some(vf) = &verified_files {
-                                            let mut v = vf.lock().unwrap();
-                                            v.insert(chunk_task.name.clone());
                                         }
                                         drop(permit);
                                         return;
@@ -477,6 +472,7 @@ impl Sophon for Game {
                                             let pn = chunk.patch_name;
                                             let chunkp = chunks_dir.join(pn.clone());
                                             let diffp = chunks_dir.join(format!("{}.hdiff", chunk.patch_md5));
+                                            let patch_size = patch_infos.get(&pn).map(|(size, _)| *size).unwrap_or(chunk.patch_size.max(chunk.patch_offset.saturating_add(chunk.patch_length)));
 
                                             // User has predownloaded validate each chunk and apply patches
                                             if preloaded {
@@ -509,10 +505,7 @@ impl Sophon for Game {
                                                                 }
                                                             } else {
                                                                 let _r = fs::remove_file(&of);
-                                                                match _r {
-                                                                    Ok(_) => { fs::File::create(&of).unwrap(); }
-                                                                    Err(_) => {}
-                                                                }
+                                                                match _r { Ok(_) => { fs::File::create(&of).unwrap(); } Err(_) => {} }
                                                             }
                                                             let mut hdiff = HDiff::new(of.to_str().unwrap().to_string(), diffp.to_str().unwrap().to_string().to_string(), output_path.to_str().unwrap().to_string());
                                                             let status = hdiff.apply();
@@ -544,11 +537,35 @@ impl Sophon for Game {
                                                     }
                                                 } else { continue; }
                                             } else {
-                                                // Check if already on disk and valid (resume from preload or previous run)
-                                                let pre_valid = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
-                                                if chunkp.exists() && pre_valid {
-                                                    if seen_patches.lock().unwrap().insert(pn.clone()) { download_counter.fetch_add(chunk.patch_size, Ordering::SeqCst); }
-                                                } else {
+                                                loop {
+                                                    if seen_patches.lock().unwrap().contains(&pn) { break; }
+
+                                                    let acquired_owner = {
+                                                        let mut in_progress = downloading_patches.lock().unwrap();
+                                                        in_progress.insert(pn.clone())
+                                                    };
+                                                    if !acquired_owner {
+                                                        tokio::time::sleep(Duration::from_millis(50)).await;
+                                                        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { drop(permit); return; } }
+                                                        continue;
+                                                    }
+
+                                                    let existing_size = chunkp.metadata().map(|m| m.len().min(patch_size)).unwrap_or(0);
+                                                    let counted_bytes = Arc::new(AtomicU64::new(existing_size));
+                                                    if existing_size > 0 { download_counter.fetch_add(existing_size, Ordering::SeqCst); }
+                                                    active_verifications.fetch_add(1, Ordering::SeqCst);
+                                                    let cvalid = chunkp.exists() && validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
+                                                    active_verifications.fetch_sub(1, Ordering::SeqCst);
+
+                                                    if cvalid {
+                                                        if seen_patches.lock().unwrap().insert(pn.clone()) {
+                                                            let remaining = patch_size.saturating_sub(existing_size);
+                                                            if remaining > 0 { download_counter.fetch_add(remaining, Ordering::SeqCst); }
+                                                        }
+                                                        downloading_patches.lock().unwrap().remove(&pn);
+                                                        break;
+                                                    }
+
                                                     active_downloads.fetch_add(1, Ordering::SeqCst);
                                                     let mut last_error = String::new();
                                                     let mut dl_success = false;
@@ -557,37 +574,46 @@ impl Sophon for Game {
                                                         if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { cancelled = true; break; } }
                                                         let dl_result = AsyncDownloader::new(client.clone(), format!("{chunk_base}/{pn}")).await;
                                                         if let Err(e) = dl_result { last_error = e.to_string(); continue; }
-                                                        let mut dl = dl_result.unwrap().with_cancel_token(cancel_token.clone());
+                                                        // Graceful pause: let an active patch asset finish before stopping.
+                                                        let mut dl = dl_result.unwrap();
                                                         let net_t = net_tracker.clone();
                                                         let disk_t = disk_tracker.clone();
                                                         let download_counter_cb = download_counter.clone();
-                                                        let cur_size = chunkp.metadata().map(|m| m.len()).unwrap_or(0);
-                                                        download_counter.fetch_add(cur_size, Ordering::SeqCst);
-                                                        let added_this_attempt = Arc::new(AtomicU64::new(cur_size));
-                                                        let added_this_attempt_cb = added_this_attempt.clone();
-                                                        let mut last_written = cur_size;
+                                                        let counted_bytes_cb = counted_bytes.clone();
+                                                        let mut last_written = chunkp.metadata().map(|m| m.len().min(patch_size)).unwrap_or(0);
                                                         let dlf = dl.download(chunkp.clone(), move |current, _, _, _| {
+                                                            let current = current.min(patch_size);
                                                             let diff = current.saturating_sub(last_written);
-                                                            if diff > 0 { net_t.add_bytes(diff); disk_t.add_bytes(diff); download_counter_cb.fetch_add(diff, Ordering::SeqCst); added_this_attempt_cb.fetch_add(diff, Ordering::SeqCst); }
+                                                            if diff > 0 { net_t.add_bytes(diff); disk_t.add_bytes(diff); download_counter_cb.fetch_add(diff, Ordering::SeqCst); counted_bytes_cb.fetch_add(diff, Ordering::SeqCst); }
                                                             last_written = current;
                                                         }).await;
-                                                        let total_added = added_this_attempt.load(Ordering::SeqCst);
                                                         if let Err(e) = &dlf {
-                                                            if cancel_token.as_ref().map(|t| t.load(Ordering::Relaxed)).unwrap_or(false) { cancelled = true; break; }
-                                                            // Network error: only roll back the pre-add, keep partial file for resume (matches preload behaviour)
-                                                            download_counter.fetch_sub(cur_size, Ordering::SeqCst); last_error = e.to_string(); continue;
+                                                            last_error = e.to_string();
+                                                            if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { cancelled = true; break; } }
+                                                            continue;
                                                         }
+                                                        active_validations.fetch_add(1, Ordering::SeqCst);
                                                         let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
-                                                        if r { dl_success = true; break; } else {
-                                                            // Corrupt data: roll back everything and delete so next attempt starts clean
-                                                            download_counter.fetch_sub(total_added, Ordering::SeqCst);
+                                                        active_validations.fetch_sub(1, Ordering::SeqCst);
+                                                        if r {
+                                                            let counted = counted_bytes.load(Ordering::SeqCst);
+                                                            let remaining = patch_size.saturating_sub(counted);
+                                                            if remaining > 0 { download_counter.fetch_add(remaining, Ordering::SeqCst); }
+                                                            seen_patches.lock().unwrap().insert(pn.clone());
+                                                            dl_success = true;
+                                                            break;
+                                                        } else {
+                                                            let rollback = counted_bytes.swap(0, Ordering::SeqCst);
+                                                            if rollback > 0 { download_counter.fetch_sub(rollback, Ordering::SeqCst); }
                                                             last_error = "Checksum mismatch".to_string();
                                                             if chunkp.exists() { let _ = tokio::fs::remove_file(&chunkp).await; }
                                                         }
                                                     }
                                                     active_downloads.fetch_sub(1, Ordering::SeqCst);
+                                                    downloading_patches.lock().unwrap().remove(&pn);
                                                     if cancelled { drop(permit); return; }
                                                     if !dl_success { eprintln!("Failed to download patch chunk {}/{} after 3 retries: {}", chunk_base, pn, last_error); continue; }
+                                                    break;
                                                 }
                                                 if chunkp.exists() {
                                                     let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
@@ -619,10 +645,7 @@ impl Sophon for Game {
                                                                     }
                                                                 } else {
                                                                     let _r = fs::remove_file(&of);
-                                                                    match _r {
-                                                                        Ok(_) => { fs::File::create(&of).unwrap(); }
-                                                                        Err(_) => {}
-                                                                    }
+                                                                    match _r { Ok(_) => { fs::File::create(&of).unwrap(); } Err(_) => {} }
                                                                 }
                                                                 let mut hdiff = HDiff::new(of.to_str().unwrap().to_string(), diffp.to_str().unwrap().to_string().to_string(), output_path.to_str().unwrap().to_string());
                                                                 let status = hdiff.apply();
@@ -659,7 +682,9 @@ impl Sophon for Game {
                                         let r2 = validate_checksum(output_path.as_path(), chunk_task.md5.to_ascii_lowercase()).await;
                                         active_validations.fetch_sub(1, Ordering::SeqCst);
                                         if r2 {
-                                            progress_counter.fetch_add(chunk_task.size, Ordering::SeqCst);
+                                            let install_current = progress_counter.fetch_add(file_patch_size, Ordering::SeqCst) + file_patch_size;
+                                            let download_current = if preloaded { download_total } else { download_counter.load(Ordering::SeqCst).min(download_total) };
+                                            progress_cb(download_current, download_total, install_current.min(install_total), install_total, 0, 0, 3);
                                             if let Some(vf) = &verified_files {
                                                 let mut v = vf.lock().unwrap();
                                                 v.insert(chunk_task.name.clone());
@@ -684,11 +709,7 @@ impl Sophon for Game {
                     }
                 }
                 monitor_handle.abort();
-                if preloaded {
-                    progress(0, 0, install_total, install_total, 0, 0, 0);
-                } else {
-                    progress(download_total, download_total, install_total, install_total, 0, 0, 0);
-                }
+                progress(download_total, download_total, install_total, install_total, 0, 0, 5);
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
                 if moved.is_ok() {
                     if preloaded {} else { fs::remove_dir_all(p.as_path()).unwrap(); }
@@ -965,10 +986,20 @@ impl Sophon for Game {
                 if !chunks.exists() { fs::create_dir_all(chunks.clone()).unwrap(); }
                 let decoded = tokio::task::spawn_blocking(move || { SophonDiff::decode(&mut Cursor::new(&file_contents)).unwrap() }).await.unwrap();
 
-                let mut seen_total: std::collections::HashSet<String> = std::collections::HashSet::new();
-                let download_total: u64 = decoded.files.iter().filter(|f| f.chunks.contains_key(&version)).flat_map(|f| f.chunks.iter().filter(|(v, _)| v.as_str() == version.as_str())).filter(|(_, c)| seen_total.insert(c.patch_name.clone())).map(|(_, c)| c.patch_size).sum();
+                let mut patch_infos: std::collections::HashMap<String, (u64, String)> = std::collections::HashMap::new();
+                for file in decoded.files.iter().filter(|f| f.chunks.contains_key(&version)) {
+                    for (ver, chunk) in &file.chunks {
+                        if ver.as_str() != version.as_str() { continue; }
+                        let patch_size = chunk.patch_size.max(chunk.patch_offset.saturating_add(chunk.patch_length));
+                        patch_infos.entry(chunk.patch_name.clone()).and_modify(|(size, _)| *size = (*size).max(patch_size)).or_insert((patch_size, chunk.patch_md5.clone()));
+                    }
+                }
+                let download_total: u64 = patch_infos.values().map(|(size, _)| *size).sum();
+                let install_total = download_total;
                 let download_counter = Arc::new(AtomicU64::new(0));
+                let install_counter = Arc::new(AtomicU64::new(0));
                 let seen_patches: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
+                let downloading_patches: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
                 let active_verifications = Arc::new(AtomicU64::new(0));
                 let active_downloads = Arc::new(AtomicU64::new(0));
                 let active_validations = Arc::new(AtomicU64::new(0));
@@ -976,10 +1007,12 @@ impl Sophon for Game {
                 let net_tracker = Arc::new(SpeedTracker::new());
                 let disk_tracker = Arc::new(SpeedTracker::new());
                 let progress = Arc::new(progress);
-                progress(download_counter.load(Ordering::SeqCst).min(download_total), download_total, 0, 0, 0, 0, 1);
+
+                progress(download_counter.load(Ordering::SeqCst).min(download_total), download_total, install_counter.load(Ordering::SeqCst).min(install_total), install_total, 0, 0, 1);
 
                 let monitor_handle = tokio::spawn({
                     let download_counter = download_counter.clone();
+                    let install_counter = install_counter.clone();
                     let active_verifications = active_verifications.clone();
                     let active_downloads = active_downloads.clone();
                     let active_validations = active_validations.clone();
@@ -990,13 +1023,14 @@ impl Sophon for Game {
                         loop {
                             tokio::time::sleep(Duration::from_millis(500)).await;
                             let download_current = download_counter.load(Ordering::SeqCst).min(download_total);
+                            let install_current = install_counter.load(Ordering::SeqCst).min(install_total);
                             let net_speed = net_tracker.update();
                             let disk_speed = disk_tracker.update();
                             let verifying = active_verifications.load(Ordering::SeqCst);
                             let downloading = active_downloads.load(Ordering::SeqCst);
                             let validating = active_validations.load(Ordering::SeqCst);
-                            let phase = if downloading > 0 { 2 } else if validating > 0 { 4 } else if verifying > 0 { 1 } else { 0 };
-                            progress(download_current, download_total, 0, 0, net_speed, disk_speed, phase);
+                            let phase = if verifying > 0 || validating > 0 || install_current > 0 { 4 } else if downloading > 0 { 2 } else { 0 };
+                            progress(download_current, download_total, install_current, install_total, net_speed, disk_speed, phase);
                         }
                     }
                 });
@@ -1024,6 +1058,7 @@ impl Sophon for Game {
 
                     let stealers = stealers.clone();
                     let download_counter = download_counter.clone();
+                    let install_counter = install_counter.clone();
                     let active_verifications = active_verifications.clone();
                     let active_downloads = active_downloads.clone();
                     let active_validations = active_validations.clone();
@@ -1037,6 +1072,8 @@ impl Sophon for Game {
                     let verified_files = verified_files.clone();
                     let failed_chunks = failed_chunks.clone();
                     let seen_patches = seen_patches.clone();
+                    let patch_infos = Arc::new(patch_infos.clone());
+                    let downloading_patches = downloading_patches.clone();
 
                     let mut retry_tasks = Vec::new();
                     let handle = tokio::task::spawn(async move {
@@ -1051,6 +1088,7 @@ impl Sophon for Game {
 
                             let ct = tokio::spawn({
                                 let download_counter = download_counter.clone();
+                                let install_counter = install_counter.clone();
                                 let active_verifications = active_verifications.clone();
                                 let active_downloads = active_downloads.clone();
                                 let active_validations = active_validations.clone();
@@ -1064,87 +1102,110 @@ impl Sophon for Game {
                                 let verified_files = verified_files.clone();
                                 let failed_chunks = failed_chunks.clone();
                                 let seen_patches = seen_patches.clone();
+                                let patch_infos = patch_infos.clone();
+                                let downloading_patches = downloading_patches.clone();
                                 async move {
                                     if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { drop(permit); return; } }
                                     active_verifications.fetch_add(1, Ordering::SeqCst);
-                                    let already_verified = if let Some(vf) = &verified_files {
-                                        let v = vf.lock().unwrap();
-                                        v.contains(&chunk_task.name)
-                                    } else { false };
                                     let task_name = chunk_task.name.clone();
                                     let filtered: Vec<(String, PatchChunk)> = chunk_task.chunks.into_iter().filter(|(v, _chunk)| version.as_str() == v.as_str()).collect();
                                     active_verifications.fetch_sub(1, Ordering::SeqCst);
                                     if filtered.is_empty() { drop(permit); return; }
 
-                                    if already_verified {
-                                        for (_v, chunk) in &filtered {
-                                            if !seen_patches.lock().unwrap().insert(chunk.patch_name.clone()) { continue; }
-                                            download_counter.fetch_add(chunk.patch_size, Ordering::SeqCst);
-                                        }
-                                        drop(permit);
-                                        return;
-                                    }
-
                                     let mut all_ok = true;
                                     for (_v, chunk) in filtered.into_iter() {
                                         if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { drop(permit); return; } }
                                         let pn = chunk.patch_name.clone();
-                                        if !seen_patches.lock().unwrap().insert(pn.clone()) { continue; }
                                         let chunkp = chunks_dir.join(&pn);
+                                        let patch_size = patch_infos.get(&pn).map(|(size, _)| *size).unwrap_or(chunk.patch_size.max(chunk.patch_offset.saturating_add(chunk.patch_length)));
+                                        loop {
+                                            if seen_patches.lock().unwrap().contains(&pn) { break; }
 
-                                        active_verifications.fetch_add(1, Ordering::SeqCst);
-                                        let cvalid = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
-                                        active_verifications.fetch_sub(1, Ordering::SeqCst);
-
-                                        if chunkp.exists() && cvalid {
-                                            download_counter.fetch_add(chunk.patch_size, Ordering::SeqCst);
-                                            continue;
-                                        }
-
-                                        let url = format!("{chunk_base}/{pn}");
-                                        let mut last_error = String::new();
-                                        let mut success = false;
-                                        let mut cancelled = false;
-
-                                        active_downloads.fetch_add(1, Ordering::SeqCst);
-                                        for _attempt in 0..3 {
-                                            if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { cancelled = true; break; } }
-                                            let dl_result = AsyncDownloader::new(client.clone(), url.clone()).await;
-                                            if let Err(e) = dl_result { last_error = e.to_string(); continue; }
-                                            let mut dl = dl_result.unwrap().with_cancel_token(cancel_token.clone());
-                                            let net_t = net_tracker.clone();
-                                            let disk_t = disk_tracker.clone();
-                                            let download_counter_cb = download_counter.clone();
-                                            let cur_size = chunkp.metadata().map(|m| m.len()).unwrap_or(0);
-                                            download_counter.fetch_add(cur_size, Ordering::SeqCst);
-                                            let mut last_written = cur_size;
-                                            let dlf = dl.download(chunkp.clone(), move |current, _, _, _| {
-                                                let diff = current.saturating_sub(last_written);
-                                                if diff > 0 { net_t.add_bytes(diff); disk_t.add_bytes(diff); download_counter_cb.fetch_add(diff, Ordering::SeqCst); }
-                                                last_written = current;
-                                            }).await;
-                                            if let Err(e) = &dlf {
-                                                if cancel_token.as_ref().map(|t| t.load(Ordering::Relaxed)).unwrap_or(false) { cancelled = true; break; }
-                                                download_counter.fetch_sub(cur_size, Ordering::SeqCst); last_error = e.to_string(); continue;
+                                            let acquired_owner = {
+                                                let mut in_progress = downloading_patches.lock().unwrap();
+                                                in_progress.insert(pn.clone())
+                                            };
+                                            if !acquired_owner {
+                                                tokio::time::sleep(Duration::from_millis(50)).await;
+                                                if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { drop(permit); return; } }
+                                                continue;
                                             }
 
-                                            active_validations.fetch_add(1, Ordering::SeqCst);
-                                            let cvalid = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
-                                            active_validations.fetch_sub(1, Ordering::SeqCst);
-                                            if cvalid { success = true; break; } else {
-                                                let written = chunkp.metadata().map(|m| m.len()).unwrap_or(0);
-                                                download_counter.fetch_sub(written.min(download_counter.load(Ordering::SeqCst)), Ordering::SeqCst);
-                                                last_error = "Checksum mismatch".to_string();
-                                                if chunkp.exists() { let _ = tokio::fs::remove_file(&chunkp).await; }
-                                            }
-                                        }
-                                        active_downloads.fetch_sub(1, Ordering::SeqCst);
+                                            let existing_size = chunkp.metadata().map(|m| m.len().min(patch_size)).unwrap_or(0);
+                                            if existing_size > 0 { download_counter.fetch_add(existing_size, Ordering::SeqCst); }
+                                            active_verifications.fetch_add(1, Ordering::SeqCst);
+                                            let cvalid = chunkp.exists() && validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
+                                            active_verifications.fetch_sub(1, Ordering::SeqCst);
 
-                                        if cancelled { drop(permit); return; }
-                                        if !success {
-                                            eprintln!("Failed to download preload chunk {}/{} after 3 retries: {}", chunk_base, pn, last_error);
-                                            failed_chunks.lock().unwrap().push(FailedChunk { file_name: task_name.clone(), chunk_name: pn.clone(), error: last_error });
-                                            all_ok = false;
+                                            if cvalid {
+                                                if seen_patches.lock().unwrap().insert(pn.clone()) {
+                                                    let remaining = patch_size.saturating_sub(existing_size);
+                                                    if remaining > 0 { download_counter.fetch_add(remaining, Ordering::SeqCst); }
+                                                    install_counter.fetch_add(patch_size, Ordering::SeqCst);
+                                                }
+                                                downloading_patches.lock().unwrap().remove(&pn);
+                                                break;
+                                            }
+
+                                            let url = format!("{chunk_base}/{pn}");
+                                            let mut last_error = String::new();
+                                            let mut success = false;
+                                            let mut cancelled = false;
+
+                                            active_downloads.fetch_add(1, Ordering::SeqCst);
+                                            let counted_bytes = Arc::new(AtomicU64::new(existing_size));
+                                            for _attempt in 0..3 {
+                                                if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { cancelled = true; break; } }
+                                                let dl_result = AsyncDownloader::new(client.clone(), url.clone()).await;
+                                                if let Err(e) = dl_result { last_error = e.to_string(); continue; }
+                                                // Graceful pause: let an active patch asset finish before stopping.
+                                                let mut dl = dl_result.unwrap();
+                                                let net_t = net_tracker.clone();
+                                                let disk_t = disk_tracker.clone();
+                                                let download_counter_cb = download_counter.clone();
+                                                let counted_bytes_cb = counted_bytes.clone();
+                                                let mut last_written = chunkp.metadata().map(|m| m.len().min(patch_size)).unwrap_or(0);
+                                                let dlf = dl.download(chunkp.clone(), move |current, _, _, _| {
+                                                    let current = current.min(patch_size);
+                                                    let diff = current.saturating_sub(last_written);
+                                                    if diff > 0 { net_t.add_bytes(diff); disk_t.add_bytes(diff); download_counter_cb.fetch_add(diff, Ordering::SeqCst); counted_bytes_cb.fetch_add(diff, Ordering::SeqCst); }
+                                                    last_written = current;
+                                                }).await;
+                                                if let Err(e) = &dlf {
+                                                    last_error = e.to_string();
+                                                    if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { cancelled = true; break; } }
+                                                    continue;
+                                                }
+
+                                                active_validations.fetch_add(1, Ordering::SeqCst);
+                                                let cvalid = chunkp.exists() && validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
+                                                active_validations.fetch_sub(1, Ordering::SeqCst);
+                                                if cvalid {
+                                                    let counted = counted_bytes.load(Ordering::SeqCst);
+                                                    let remaining = patch_size.saturating_sub(counted);
+                                                    if remaining > 0 { download_counter.fetch_add(remaining, Ordering::SeqCst); }
+                                                    if seen_patches.lock().unwrap().insert(pn.clone()) {
+                                                        install_counter.fetch_add(patch_size, Ordering::SeqCst);
+                                                    }
+                                                    success = true;
+                                                    break;
+                                                } else {
+                                                    let rollback = counted_bytes.swap(0, Ordering::SeqCst);
+                                                    if rollback > 0 { download_counter.fetch_sub(rollback, Ordering::SeqCst); }
+                                                    last_error = "Checksum mismatch".to_string();
+                                                    if chunkp.exists() { let _ = tokio::fs::remove_file(&chunkp).await; }
+                                                }
+                                            }
+                                            active_downloads.fetch_sub(1, Ordering::SeqCst);
+                                            downloading_patches.lock().unwrap().remove(&pn);
+
+                                            if cancelled { drop(permit); return; }
+                                            if !success {
+                                                eprintln!("Failed to download preload chunk {}/{} after 3 retries: {}", chunk_base, pn, last_error);
+                                                failed_chunks.lock().unwrap().push(FailedChunk { file_name: task_name.clone(), chunk_name: pn.clone(), error: last_error });
+                                                all_ok = false;
+                                            }
+                                            break;
                                         }
                                     }
 
@@ -1178,7 +1239,7 @@ impl Sophon for Game {
                 }
                 drop(failures);
                 monitor_handle.abort();
-                progress(download_total, download_total, 0, 0, 0, 0, 0);
+                progress(download_counter.load(Ordering::SeqCst).min(download_total), download_total, install_counter.load(Ordering::SeqCst).min(install_total), install_total, 0, 0, 0);
                 true
             } else { false }
         } else { false }
