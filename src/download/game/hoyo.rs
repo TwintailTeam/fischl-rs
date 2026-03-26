@@ -1,7 +1,7 @@
 use crate::download::game::{Game, Sophon};
 use crate::utils::downloader::AsyncDownloader;
 use crate::utils::proto::{DeleteFiles, FileChunk, ManifestFile, PatchChunk, PatchFile, SophonDiff, SophonManifest};
-use crate::utils::{FailedChunk, SpeedTracker, move_all, validate_checksum};
+use crate::utils::{FailedChunk, SpeedTracker, move_all, validate_checksum, url_safe_token};
 use crossbeam_deque::{Injector, Steal, Worker};
 use prost::Message;
 use reqwest_middleware::ClientWithMiddleware;
@@ -486,7 +486,7 @@ impl Sophon for Game {
 
                                             let pn = chunk.patch_name;
                                             let chunkp = chunks_dir.join(pn.clone());
-                                            let diffp = chunks_dir.join(format!("{}.hdiff", chunk.patch_md5));
+                                            let diffp = chunks_dir.join(format!("{}_{}_{}.hdiff", chunk.patch_name, chunk.patch_md5, url_safe_token(6)));
                                             let patch_size = patch_infos.get(&pn).map(|(size, _)| *size).unwrap_or(chunk.patch_size.max(chunk.patch_offset.saturating_add(chunk.patch_length)));
 
                                             // User has predownloaded validate each chunk and apply patches
@@ -768,7 +768,7 @@ impl Sophon for Game {
                                                 let output_path = output_path.clone();
 
                                                 let chunkp = chunks_dir.join(chunk.patch_name.clone());
-                                                let diffp = chunks_dir.join(format!("{}.hdiff", chunk.patch_md5));
+                                                let diffp = chunks_dir.join(format!("{}_{}_{}.hdiff", chunk.patch_name, chunk.patch_md5, url_safe_token(6)));
                                                 let r = validate_checksum(chunkp.as_path(), chunk.patch_md5.to_ascii_lowercase()).await;
                                                 if r {
                                                     if chunk.original_filename.is_empty() {
