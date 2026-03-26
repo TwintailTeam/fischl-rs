@@ -519,8 +519,8 @@ impl Sophon for Game {
                                                                     fs::File::create(&of).unwrap();
                                                                 }
                                                             } else {
-                                                                let _r = fs::remove_file(&of);
-                                                                match _r { Ok(_) => { fs::File::create(&of).unwrap(); } Err(_) => {} }
+                                                                let r = fs::remove_file(&of);
+                                                                match r { Ok(_) => { fs::File::create(&of).unwrap(); } Err(_) => {} }
                                                             }
                                                             let mut hdiff = HDiff::new(of.to_str().unwrap().to_string(), diffp.to_str().unwrap().to_string().to_string(), output_path.to_str().unwrap().to_string());
                                                             let status = hdiff.apply();
@@ -795,8 +795,8 @@ impl Sophon for Game {
                                                                     fs::File::create(&of).unwrap();
                                                                 }
                                                             } else {
-                                                                let _r = fs::remove_file(&of);
-                                                                match _r { Ok(_) => { fs::File::create(&of).unwrap(); } Err(_) => {} }
+                                                                let r = fs::remove_file(&of);
+                                                                match r { Ok(_) => { fs::File::create(&of).unwrap(); } Err(_) => {} }
                                                             }
                                                             let mut hdiff = HDiff::new(of.to_str().unwrap().to_string(), diffp.to_str().unwrap().to_string().to_string(), output_path.to_str().unwrap().to_string());
                                                             let status = hdiff.apply();
