@@ -508,6 +508,18 @@ pub fn url_safe_token(len: usize) -> String {
     chars
 }
 
+pub async fn check_network_status(endpoint: String) -> Result<reqwest::Response, reqwest::Error> {
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build().unwrap_or_else(|_| reqwest::Client::new());
+    client.head(endpoint).send().await
+}
+
+pub fn parse_url(url: String) -> Result<reqwest::Url, String> {
+   match reqwest::Url::parse(&url) {
+       Ok(url) => Ok(url),
+       Err(_) => Err("Unable to parse url!".to_string()),
+   }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct KuroIndex {
     pub resource: Vec<KuroResource>,
