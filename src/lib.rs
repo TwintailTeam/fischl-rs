@@ -5,9 +5,31 @@ pub mod download;
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::io::Write;
     use crate::download::{Extras};
     use crate::download::game::{Game, Kuro, Sophon, Zipped};
-    use crate::utils::{prettify_bytes};
+    use crate::utils::{actually_uncompress_with_progress, prettify_bytes};
+
+    #[test]
+    fn test_extract() {
+        let archive = "/home/tukan/Downloads/extractme.7z".to_string();
+        let strip = false;
+        let out = "/home/tukan/Downloads/out".to_string();
+        fs::create_dir_all(&out).unwrap();
+        println!("Extracting: {archive}");
+        println!("Into: {out}");
+        println!("Strip head: {strip}");
+
+        actually_uncompress_with_progress(archive, out, strip, |done, total| {
+            if total > 0 {
+                let pct = done as f64 / total as f64 * 100.0;
+                println!("{pct:5.1}% | {}/{}", prettify_bytes(done), prettify_bytes(total));
+                std::io::stdout().flush().unwrap_or(());
+            }
+        });
+        println!("Done.");
+    }
 
     #[tokio::test]
     async fn download_xxmi_test() {
@@ -63,21 +85,10 @@ mod tests {
 
     #[tokio::test]
     async fn download_fullgame_test() {
-        let mut urls = Vec::<String>::new();
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.001"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.002"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.003"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.004"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.005"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.006"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.007"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/GenshinImpact_5.5.0.zip.008"));
-        urls.push(String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/Audio_English(US)_5.5.0.zip"));
-
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Zipped>::download(urls, path.parse().unwrap(), |current, total| {
+        let rep = <Game as Zipped>::download("".to_string(), path.parse().unwrap(), false, false, |current, total, som1, som2| {
             println!("current: {} | total: {}", current, total);
-        }).await;
+        }, None, None).await;
         if rep {
             println!("full_game success!");
         } else {
@@ -89,9 +100,9 @@ mod tests {
     async fn download_hdiff_test() {
         let url = "https://autopatchhk.yuanshen.com/client_app/update/hk4e_global/game_5.4.0_5.5.0_hdiff_IlvHovyEdpXnwiCH.zip";
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Zipped>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total| {
+        let rep = <Game as Zipped>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total, som1, som2| {
             println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
-        }).await;
+        }, None, None).await;
         if rep {
             println!("diff_game success!");
         } else {
@@ -103,7 +114,7 @@ mod tests {
     async fn repair_game_test() {
         let res_list = String::from("https://autopatchhk.yuanshen.com/client_app/download/pc_zip/20250314110016_HcIQuDGRmsbByeAE/ScatteredFiles");
         let path = "/games/hoyo/hk4e_global/live";
-        let rep = <Game as Zipped>::repair_game(res_list, path.parse().unwrap(), false, |_, _| {}).await;
+        let rep = <Game as Zipped>::repair_game(res_list, path.parse().unwrap(), false, |_, _, _, _| {}, None, None).await;
         if rep {
             println!("repair_game success!");
         } else {
@@ -121,9 +132,9 @@ mod tests {
         //let chunkurl = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.6.2/TmryWWDzYshLRahsXoGizseCUnInEDtj/zip";
 
         let path = "/games/kuro/wuwa_global/testing";
-        let rep = <Game as Kuro>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
+        let rep = <Game as Kuro>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total, som1, som2, som3, som4, som5| {
             println!("current: {} | total: {}", current, total)
-        }).await;
+        }, None, None).await;
         if rep {
             println!("full_game_kuro success!");
         } else {
@@ -138,9 +149,9 @@ mod tests {
         let chunk_zip = "https://zspms-alicdn-gamestarter.kurogame.net/launcher/game/G143/50015/3.8.0/fQwueYbrJvAInbczEGotEDqvDPbdCklY/zip";
 
         let path = "/games/kuro/wuwa_global/testing";
-        let rep = <Game as Kuro>::patch(manifest.to_string(), chunk_res.to_string(), chunk_zip.to_string(), path.parse().unwrap(), false, |current,total| {
+        let rep = <Game as Kuro>::patch(manifest.to_string(), chunk_res.to_string(), chunk_zip.to_string(), path.parse().unwrap(), false, |current,total, som1, som2, som3, som4, som5| {
             println!("current: {}, total: {}", current, total);
-        }).await;
+        }, None, None).await;
         if rep {
             println!("diff_game_kuro success!");
         } else {
@@ -157,7 +168,7 @@ mod tests {
         //let chunkurl = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.1/IYOwHBLfeAXMxVgHwGybWvvSqiDnPlbs/zip";
 
         let path = "/games/kuro/wuwa_global/testing";
-        let rep = <Game as Kuro>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false, |_, _| {}).await;
+        let rep = <Game as Kuro>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false, |_, _, _, _, _, _, _| {}, None, None).await;
         if rep {
             println!("repair_game_kuro success!");
         } else {
@@ -176,9 +187,9 @@ mod tests {
         let chunkurl_zip = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.6.1/hjetrIFhEnolsFvBMHVnqaASBoWlvNNx/zip";*/
 
         let path = "/games/kuro/wuwa_global/testing";
-        let rep = <Game as Kuro>::preload(manifest.to_string(), chunkurl_res.to_string(), chunkurl_zip.to_string(), path.parse().unwrap(),|current,total| {
+        let rep = <Game as Kuro>::preload(manifest.to_string(), chunkurl_res.to_string(), chunkurl_zip.to_string(), path.parse().unwrap(),|current,total, som1, som2, som3, som4, som5| {
             println!("current: {}, total: {}", current, total);
-        }).await;
+        }, None, None).await;
         if rep {
             println!("preload_game_kuro success!");
         } else {
@@ -193,9 +204,9 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/d6lo39gA1LIA";
         let path = "/games/hoyo/hk4e_global/testing";
 
-        let rep = <Game as Sophon>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
+        let rep = <Game as Sophon>::download(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total, som1, som2, som3, som4, som5| {
             println!("current: {} | total: {}", current, total)
-        }).await;
+        }, None, None).await;
         if rep {
             println!("full_game_sophon success!");
         } else {
@@ -209,9 +220,9 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
         let path = "/games/hoyo/hk4e_global/testing";
 
-        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), "".to_string(), true, |current, total| {
+        let rep = <Game as Sophon>::patch(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), true, |current, total, som1, som2, som3, som4, som5| {
             println!("current: {} | total: {}", current, total)
-        }).await;
+        }, None, None).await;
         if rep {
             println!("diff_game_sophon success!");
         } else {
@@ -225,9 +236,9 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/chunks/cxhpq4g4rgg0/d6lo39gA1LIA";
         let path = "/games/hoyo/hk4e_global/testing";
 
-        let rep = <Game as Sophon>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false,|current, total| {
+        let rep = <Game as Sophon>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false,|current, total, som1, som2, som3, som4, som5| {
             println!("current: {} | total: {}", current, total)
-        }).await;
+        }, None, None).await;
         if rep {
             println!("repair_game_sophon success!");
         } else {
@@ -241,9 +252,9 @@ mod tests {
         let chunkurl = "https://autopatchhk.yuanshen.com/client_app/sophon/diffs/cxhpq4g4rgg0/DphJOTQP5dDn/10016";
         let path = "/games/hoyo/hk4e_global/testing";
 
-        let rep = <Game as Sophon>::preload(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total| {
+        let rep = <Game as Sophon>::preload(manifest.to_string(), "5.6.0".to_string(), chunkurl.to_string(), path.parse().unwrap(), |current, total, som1, som2, som3, som4, som5| {
             println!("current: {} | total: {}", current, total)
-        }).await;
+        }, None, None).await;
         if rep {
             println!("preload_game_sophon success!");
         } else {

@@ -46,11 +46,27 @@ pub fn is_same_disk(path1: impl AsRef<Path>, path2: impl AsRef<Path>) -> bool {
         a.cmp(&b).reverse()
     });
 
-    let mut path1 = path1.as_ref().to_path_buf();
-    let mut path2 = path2.as_ref().to_path_buf();
+    let path1 = path1.as_ref().to_path_buf();
+    let path2 = path2.as_ref().to_path_buf();
     for disk in disks.iter() {
-        let mut disk_path = disk.mount_point().to_path_buf();
+        let disk_path = disk.mount_point().to_path_buf();
         if path1.starts_with(disk_path.clone()) && path2.starts_with(disk_path) { return true; }
     }
     false
+}
+
+pub fn get_disk_space(path: impl AsRef<Path>) -> (u64, u64) {
+    let mut disks = Disks::new_with_refreshed_list();
+    disks.sort_by(|a, b| {
+        let a = a.mount_point().as_os_str().len();
+        let b = b.mount_point().as_os_str().len();
+        a.cmp(&b).reverse()
+    });
+
+    let path = path.as_ref().to_owned();
+    for disk in disks.iter() {
+        let dp = disk.mount_point().to_path_buf();
+        if path.starts_with(dp) { return (disk.available_space(), disk.total_space()); }
+    }
+    (0, 0)
 }
