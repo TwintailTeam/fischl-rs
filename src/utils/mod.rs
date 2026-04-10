@@ -254,16 +254,13 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
             cb.lock().unwrap()(extracted.load(Ordering::Relaxed), total_size);
         },
         "tar.gz" => {
-            let total_size: u64 = fs::File::open(&archive_path).ok().and_then(|f| {
-                let mut arc = tar::Archive::new(flate2::read::GzDecoder::new(f));
-                arc.entries().ok().map(|es| { es.filter_map(|e| e.ok()).filter(|e| e.header().entry_type().is_file()).map(|e| e.header().size().unwrap_or(0)).sum() })
-            }).unwrap_or(0);
             let file = match fs::File::open(&archive_path) { Ok(f) => f, Err(_) => return };
             let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
             let dest_path = Path::new(&dest);
             let mut top_prefix: Option<PathBuf> = None;
             let mut prefix_found = !strip_head_path;
             let mut extracted: u64 = 0;
+            let mut total_size: u64 = 0;
             let mut last_report: u64 = 0;
             const REPORT_EVERY: u64 = 4 * 1024 * 1024;
             #[cfg(unix)] let mut dir_modes: Vec<(PathBuf, u32)> = Vec::new();
@@ -284,6 +281,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                     #[cfg(unix)] if let Ok(mode) = entry.header().mode() { dir_modes.push((out_path, mode & 0o7777)); }
                 } else if kind.is_file() {
                     let file_size = entry.header().size().unwrap_or(0);
+                    total_size += file_size;
                     if let Some(parent) = out_path.parent() { fs::create_dir_all(parent).unwrap_or(()); }
                     let mut out_file = match fs::File::create(&out_path) { Ok(f) => f, Err(_) => continue };
                     if file_size > 0 { out_file.set_len(file_size).unwrap_or(()); }
@@ -292,7 +290,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                         let n = match entry.read(&mut buf) { Ok(n) => n, Err(_) => break };
                         if n == 0 { break; }
                         if out_file.write_all(&buf[..n]).is_err() { break; }
-                        extracted += n as u64;
+                        extracted += file_size;
                         if extracted.saturating_sub(last_report) >= REPORT_EVERY { last_report = extracted; progress_callback(extracted, total_size); }
                     }
                     #[cfg(unix)] if let Ok(mode) = entry.header().mode() { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&out_path, fs::Permissions::from_mode(mode & 0o7777)).unwrap_or(()); }
@@ -305,16 +303,13 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
             progress_callback(extracted, total_size);
         },
         "tar.xz" => {
-            let total_size: u64 = fs::File::open(&archive_path).ok().and_then(|f| {
-                let mut arc = tar::Archive::new(liblzma::read::XzDecoder::new(f));
-                arc.entries().ok().map(|es| { es.filter_map(|e| e.ok()).filter(|e| e.header().entry_type().is_file()).map(|e| e.header().size().unwrap_or(0)).sum() })
-                }).unwrap_or(0);
             let file = match fs::File::open(&archive_path) { Ok(f) => f, Err(_) => return };
             let mut archive = tar::Archive::new(liblzma::read::XzDecoder::new(file));
             let dest_path = Path::new(&dest);
             let mut top_prefix: Option<PathBuf> = None;
             let mut prefix_found = !strip_head_path;
             let mut extracted: u64 = 0;
+            let mut total_size: u64 = 0;
             let mut last_report: u64 = 0;
             const REPORT_EVERY: u64 = 4 * 1024 * 1024;
             #[cfg(unix)] let mut dir_modes: Vec<(PathBuf, u32)> = Vec::new();
@@ -335,6 +330,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                     #[cfg(unix)] if let Ok(mode) = entry.header().mode() { dir_modes.push((out_path, mode & 0o7777)); }
                 } else if kind.is_file() {
                     let file_size = entry.header().size().unwrap_or(0);
+                    total_size += file_size;
                     if let Some(parent) = out_path.parent() { fs::create_dir_all(parent).unwrap_or(()); }
                     let mut out_file = match fs::File::create(&out_path) { Ok(f) => f, Err(_) => continue };
                     if file_size > 0 { out_file.set_len(file_size).unwrap_or(()); }
@@ -343,7 +339,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                         let n = match entry.read(&mut buf) { Ok(n) => n, Err(_) => break };
                         if n == 0 { break; }
                         if out_file.write_all(&buf[..n]).is_err() { break; }
-                        extracted += n as u64;
+                        extracted += file_size;
                         if extracted.saturating_sub(last_report) >= REPORT_EVERY { last_report = extracted; progress_callback(extracted, total_size); }
                     }
                     #[cfg(unix)] if let Ok(mode) = entry.header().mode() { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&out_path, fs::Permissions::from_mode(mode & 0o7777)).unwrap_or(()); }
