@@ -7,13 +7,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
-use crate::utils::github_structs::GithubRelease;
 pub use downloader::SpeedTracker;
 
-pub(crate) mod github_structs;
 pub(crate) mod proto;
 pub mod downloader;
-pub mod free_space;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FailedChunk {
@@ -516,6 +513,41 @@ pub fn parse_url(url: String) -> Result<reqwest::Url, String> {
    }
 }
 
+pub fn available(path: impl AsRef<Path>) -> Option<u64> {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    {
+        let mut disks = sysinfo::Disks::new_with_refreshed_list();
+        disks.sort_by(|a, b| {
+            let a = a.mount_point().as_os_str().len();
+            let b = b.mount_point().as_os_str().len();
+            a.cmp(&b).reverse()
+        });
+
+        let path = path.as_ref().to_owned();
+        for disk in disks.iter() {
+            let dp = disk.mount_point().to_path_buf();
+            if path.starts_with(dp) { return Some(disk.available_space()); }
+        }
+        None
+    }
+}
+
+pub fn get_disk_space(path: impl AsRef<Path>) -> (u64, u64) {
+    let mut disks = sysinfo::Disks::new_with_refreshed_list();
+    disks.sort_by(|a, b| {
+        let a = a.mount_point().as_os_str().len();
+        let b = b.mount_point().as_os_str().len();
+        a.cmp(&b).reverse()
+    });
+
+    let path = path.as_ref().to_owned();
+    for disk in disks.iter() {
+        let dp = disk.mount_point().to_path_buf();
+        if path.starts_with(dp) { return (disk.available_space(), disk.total_space()); }
+    }
+    (0, 0)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct KuroIndex {
     pub resource: Vec<KuroResource>,
@@ -587,4 +619,93 @@ pub struct ManifestPackage {
     pub raw_url: String,
     pub default_download_mode: String,
     pub file_list: Vec<String>,
+}
+
+// === GITHUB STRUCTS ===
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GithubRelease {
+    pub url: Option<String>,
+    pub assets_url: Option<String>,
+    pub upload_url: Option<String>,
+    pub html_url: Option<String>,
+    pub id: Option<i64>,
+    pub author: Option<Author>,
+    pub node_id: Option<String>,
+    pub tag_name: Option<String>,
+    pub target_commitish: Option<String>,
+    pub name: Option<String>,
+    pub draft: Option<bool>,
+    pub prerelease: Option<bool>,
+    pub created_at: Option<String>,
+    pub published_at: Option<String>,
+    pub assets: Vec<Asset>,
+    pub tarball_url: Option<String>,
+    pub zipball_url: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Author {
+    pub login: Option<String>,
+    pub id: Option<i64>,
+    pub node_id: Option<String>,
+    pub avatar_url: Option<String>,
+    pub gravatar_id: Option<String>,
+    pub url: Option<String>,
+    pub html_url: Option<String>,
+    pub followers_url: Option<String>,
+    pub following_url: Option<String>,
+    pub gists_url: Option<String>,
+    pub starred_url: Option<String>,
+    pub subscriptions_url: Option<String>,
+    pub organizations_url: Option<String>,
+    pub repos_url: Option<String>,
+    pub events_url: Option<String>,
+    pub received_events_url: Option<String>,
+    #[serde(rename = "type")]
+    pub type_field: Option<String>,
+    pub user_view_type: Option<String>,
+    pub site_admin: Option<bool>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Asset {
+    pub url: Option<String>,
+    pub id: Option<i64>,
+    pub node_id: Option<String>,
+    pub name: Option<String>,
+    pub label: Option<String>,
+    pub uploader: Option<Uploader>,
+    pub content_type: Option<String>,
+    pub state: Option<String>,
+    pub size: Option<i64>,
+    pub download_count: Option<i64>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub browser_download_url: String,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Uploader {
+    pub login: Option<String>,
+    pub id: Option<i64>,
+    pub node_id: Option<String>,
+    pub avatar_url: Option<String>,
+    pub gravatar_id: Option<String>,
+    pub url: Option<String>,
+    pub html_url: Option<String>,
+    pub followers_url: Option<String>,
+    pub following_url: Option<String>,
+    pub gists_url: Option<String>,
+    pub starred_url: Option<String>,
+    pub subscriptions_url: Option<String>,
+    pub organizations_url: Option<String>,
+    pub repos_url: Option<String>,
+    pub events_url: Option<String>,
+    pub received_events_url: Option<String>,
+    #[serde(rename = "type")]
+    pub type_field: Option<String>,
+    pub user_view_type: Option<String>,
+    pub site_admin: Option<bool>,
 }
