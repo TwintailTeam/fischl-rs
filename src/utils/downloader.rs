@@ -1,4 +1,3 @@
-use super::free_space;
 use crate::utils::prettify_bytes;
 use futures_util::StreamExt;
 use reqwest::StatusCode;
@@ -32,12 +31,7 @@ pub struct SpeedTracker {
 
 impl SpeedTracker {
     pub fn new() -> Self {
-        Self {
-            total_bytes: AtomicU64::new(0),
-            last_bytes: AtomicU64::new(0),
-            last_update: StdMutex::new(Instant::now()),
-            ema_speed: AtomicU64::new(0),
-        }
+        Self { total_bytes: AtomicU64::new(0), last_bytes: AtomicU64::new(0), last_update: StdMutex::new(Instant::now()), ema_speed: AtomicU64::new(0) }
     }
 
     /// Add bytes downloaded by a worker. Returns the current smoothed speed.
@@ -55,10 +49,7 @@ impl SpeedTracker {
         let now = Instant::now();
         let mut last_update = self.last_update.lock().unwrap();
         let elapsed = now.duration_since(*last_update);
-
-        if elapsed.as_millis() < MIN_UPDATE_MS {
-            return self.ema_speed.load(AtomicOrdering::SeqCst);
-        }
+        if elapsed.as_millis() < MIN_UPDATE_MS { return self.ema_speed.load(AtomicOrdering::SeqCst); }
 
         let current_bytes = self.total_bytes.load(AtomicOrdering::SeqCst);
         let last_bytes = self.last_bytes.swap(current_bytes, AtomicOrdering::SeqCst);
@@ -66,23 +57,13 @@ impl SpeedTracker {
 
         // Calculate instantaneous speed
         let elapsed_secs = elapsed.as_secs_f64();
-        let instant_speed = if elapsed_secs > 0.0 {
-            (bytes_diff as f64 / elapsed_secs) as u64
-        } else {
-            0
-        };
+        let instant_speed = if elapsed_secs > 0.0 { (bytes_diff as f64 / elapsed_secs) as u64 } else { 0 };
 
         // Apply EMA smoothing
         let prev_ema = self.ema_speed.load(AtomicOrdering::SeqCst);
-        let new_ema = if prev_ema == 0 {
-            instant_speed
-        } else {
-            ((EMA_ALPHA * instant_speed as f64) + ((1.0 - EMA_ALPHA) * prev_ema as f64)) as u64
-        };
-
+        let new_ema = if prev_ema == 0 { instant_speed } else { ((EMA_ALPHA * instant_speed as f64) + ((1.0 - EMA_ALPHA) * prev_ema as f64)) as u64 };
         self.ema_speed.store(new_ema, AtomicOrdering::SeqCst);
         *last_update = now;
-
         new_ema
     }
 
@@ -201,9 +182,6 @@ fn global_download_semaphore() -> &'static tokio::sync::Semaphore {
     GLOBAL_DOWNLOAD_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_DOWNLOADS_UNLIMITED))
 }
 
-/// Sets the global download speed limit in KB/s. Set to 0 for unlimited.
-///
-/// This limiter is shared across all concurrent downloads running inside this process.
 pub fn set_global_download_speed_limit_kb(kb_per_sec: u64) {
     let bps = kb_per_sec.saturating_mul(1000);
     global_download_rate_limiter().set_limit_bps(bps);
@@ -255,7 +233,6 @@ impl AsyncDownloader {
 
     pub async fn new<T: AsRef<str>>(client: Arc<ClientWithMiddleware>, uri: T) -> Result<Self, DownloadingError> {
         let uri = uri.as_ref();
-        // HEAD request to get content length - fail early if we can't reach the server
         let header = client.head(uri).header(USER_AGENT, "lib/fischl-rs").send().await.map_err(|e| DownloadingError::ConnectionError(e.to_string()))?;
         let length = header.headers().get("content-length").and_then(|len| len.to_str().ok()?.parse().ok());
         Ok(Self { uri: uri.to_owned(), length, chunk_size: DEFAULT_CHUNK_SIZE, continue_downloading: true, check_free_space: true, cancel_token: None, client })
@@ -291,11 +268,9 @@ impl AsyncDownloader {
     pub async fn get_filename(&self) -> &str {
         let clean = self.uri.split('?').next().unwrap_or(&self.uri);
         if let Some(pos) = clean.replace('\\', "/").rfind(|c| c == '/') {
-            if !clean[pos + 1..].is_empty() {
-                return &clean[pos + 1..];
-            }
+            if !clean[pos + 1..].is_empty() { return &clean[pos + 1..]; }
         }
-        "index.html"
+        ""
     }
 
     pub async fn download(
@@ -306,14 +281,8 @@ impl AsyncDownloader {
         let path = path.into();
         let mut downloaded = 0;
 
-        // Open or create output file
         let file = if path.exists() && self.continue_downloading {
-            let mut file = tokio::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&path)
-                .await;
-
+            let mut file = tokio::fs::OpenOptions::new().read(true).write(true).open(&path).await;
             // Continue downloading if the file exists and can be opened
             if let Ok(file) = &mut file {
                 match file.metadata().await {
@@ -323,56 +292,35 @@ impl AsyncDownloader {
                             match metadata.len().cmp(&length) {
                                 std::cmp::Ordering::Less => (),
                                 std::cmp::Ordering::Equal => return Ok(()),
-                                // Trim downloaded file to prevent future issues (e.g. with extracting the archive)
                                 std::cmp::Ordering::Greater => {
-                                    if let Err(err) = file.set_len(length).await {
-                                        return Err(DownloadingError::OutputFileError(
-                                            path,
-                                            err.to_string(),
-                                        ));
-                                    }
+                                    if let Err(err) = file.set_len(length).await { return Err(DownloadingError::OutputFileError(path, err.to_string())); }
                                     return Ok(());
                                 }
                             }
                         }
 
-                        if let Err(err) =
-                            file.seek(tokio::io::SeekFrom::Start(metadata.len())).await
-                        {
-                            return Err(DownloadingError::OutputFileError(path, err.to_string()));
-                        }
+                        if let Err(err) = file.seek(tokio::io::SeekFrom::Start(metadata.len())).await { return Err(DownloadingError::OutputFileError(path, err.to_string())); }
                         downloaded = metadata.len() as usize;
                     }
 
-                    Err(err) => {
-                        return Err(DownloadingError::OutputFileMetadataError(
-                            path,
-                            err.to_string(),
-                        ));
-                    }
+                    Err(err) => { return Err(DownloadingError::OutputFileMetadataError(path, err.to_string())); }
                 }
             }
-
             file
         } else {
             let base_folder = path.parent().unwrap();
             if !base_folder.exists() {
-                if let Err(err) = tokio::fs::create_dir_all(base_folder).await {
-                    return Err(DownloadingError::OutputFileError(path, err.to_string()));
-                }
+                if let Err(err) = tokio::fs::create_dir_all(base_folder).await { return Err(DownloadingError::OutputFileError(path, err.to_string())); }
             }
             tokio::fs::File::create(&path).await
         };
 
-        // Check available free space
         if self.check_free_space {
-            match free_space::available(&path) {
+            match crate::utils::available(&path) {
                 Some(space) => {
                     if let Some(required) = self.length() {
                         let required = required.checked_sub(downloaded as u64).unwrap_or_default();
-                        if space < required {
-                            return Err(DownloadingError::NoSpaceAvailable(path, required, space));
-                        }
+                        if space < required { return Err(DownloadingError::NoSpaceAvailable(path, required, space)); }
                     }
                 }
                 None => return Err(DownloadingError::PathNotMounted(path)),
@@ -382,14 +330,8 @@ impl AsyncDownloader {
         // Download data
         match file {
             Ok(mut file) => {
-                // Check if download is already complete via HEAD request - if request fails, just proceed with download
                 if let Ok(request) = self.client.head(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send().await {
-                    // Request content range (downloaded + remained content size)
-                    // If finished or overcame: bytes */10611646760
-                    // If not finished: bytes 10611646759-10611646759/10611646760
-                    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
                     if let Some(range) = request.headers().get("content-range") {
-                        // Finish downloading if header says that we've already downloaded all the data
                         if range.to_str().unwrap_or("").contains("*/") {
                             progress(self.length.unwrap_or(downloaded as u64), self.length.unwrap_or(downloaded as u64), 0, 0);
                             return Ok(());
@@ -404,9 +346,7 @@ impl AsyncDownloader {
                 let semaphore = global_download_semaphore();
                 let _permit = loop {
                     if let Some(token) = &self.cancel_token { if token.load(Ordering::Relaxed) { return Err(DownloadingError::Cancelled); } }
-                    if let Ok(permit) = tokio::time::timeout(Duration::from_millis(100), semaphore.acquire_many(permits_needed)).await {
-                        break permit.unwrap();
-                    }
+                    if let Ok(permit) = tokio::time::timeout(Duration::from_millis(100), semaphore.acquire_many(permits_needed)).await { break permit.unwrap(); }
                 };
 
                 let request = match self.client.get(&self.uri).header(RANGE, format!("bytes={downloaded}-")).header(USER_AGENT, "lib/fischl-rs").send().await {
@@ -414,16 +354,8 @@ impl AsyncDownloader {
                     Err(e) => { return Err(DownloadingError::Reqwest(e.to_string())); }
                 };
 
-                // HTTP 416 = provided range is overcame actual content length (means file is downloaded)
-                // I check this here because HEAD request can return 200 OK while GET - 416
-                // https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/416
                 if request.status() == StatusCode::RANGE_NOT_SATISFIABLE {
-                    progress(
-                        self.length.unwrap_or(downloaded as u64),
-                        self.length.unwrap_or(downloaded as u64),
-                        0,
-                        0,
-                    );
+                    progress(self.length.unwrap_or(downloaded as u64), self.length.unwrap_or(downloaded as u64), 0, 0);
                     return Ok(());
                 }
 
@@ -434,17 +366,13 @@ impl AsyncDownloader {
                 let mut written_bytes = downloaded as u64;
 
                 loop {
-                    // Check cancel token before waiting for data
                     if let Some(token) = &self.cancel_token {
-                        if token.load(Ordering::Relaxed) {
-                            return Err(DownloadingError::Cancelled);
-                        }
+                        if token.load(Ordering::Relaxed) { return Err(DownloadingError::Cancelled); }
                     }
 
                     // Use timeout to avoid blocking indefinitely on slow connections
                     // This allows responsive pause even when network is stalled
-                    let chunk_result =
-                        tokio::time::timeout(Duration::from_millis(250), stream.next()).await;
+                    let chunk_result = tokio::time::timeout(Duration::from_millis(250), stream.next()).await;
 
                     let chunk = match chunk_result {
                         Ok(Some(data)) => data,
@@ -453,13 +381,9 @@ impl AsyncDownloader {
                     };
 
                     let data = chunk?;
-
                     // Rate-limit the entire network chunk at once (no 8KB slicing)
-                    if !global_download_rate_limiter().consume(data.len() as u64, self.cancel_token.as_deref()).await {
-                        return Err(DownloadingError::Cancelled);
-                    }
+                    if !global_download_rate_limiter().consume(data.len() as u64, self.cancel_token.as_deref()).await { return Err(DownloadingError::Cancelled); }
 
-                    // Track and write the full chunk
                     net_tracker.add_bytes(data.len() as u64);
                     if let Err(e) = file.write_all(&data).await { return Err(DownloadingError::OutputFileError(path, e.to_string())); }
                     written_bytes += data.len() as u64;
@@ -474,20 +398,10 @@ impl AsyncDownloader {
                     }
                 }
 
-                // Always emit a final progress callback to ensure all bytes are reported
-                // This is critical for small/fast downloads where the 500ms callback may not fire
                 let net_speed = net_tracker.update();
                 let disk_speed = disk_tracker.update();
-                progress(
-                    written_bytes,
-                    self.length.unwrap_or(written_bytes),
-                    net_speed,
-                    disk_speed,
-                );
-
-                if let Err(err) = file.flush().await {
-                    return Err(DownloadingError::OutputFileError(path, err.to_string()));
-                }
+                progress(written_bytes, self.length.unwrap_or(written_bytes), net_speed, disk_speed);
+                if let Err(err) = file.flush().await { return Err(DownloadingError::OutputFileError(path, err.to_string())); }
                 drop(file);
                 Ok(())
             }
