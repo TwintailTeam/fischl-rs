@@ -293,7 +293,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                     #[cfg(unix)] if let Ok(mode) = entry.header().mode() { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&out_path, fs::Permissions::from_mode(mode & 0o7777)).unwrap_or(()); }
                 } else {
                     if let Some(parent) = out_path.parent() { fs::create_dir_all(parent).unwrap_or(()); }
-                    let _ = entry.unpack(&out_path);
+                    let _ = entry.unpack_in(&out_path);
                 }
             }
             #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; for (path, mode) in dir_modes.into_iter().rev() { fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap_or(()); } }
@@ -342,7 +342,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                     #[cfg(unix)] if let Ok(mode) = entry.header().mode() { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&out_path, fs::Permissions::from_mode(mode & 0o7777)).unwrap_or(()); }
                 } else {
                     if let Some(parent) = out_path.parent() { fs::create_dir_all(parent).unwrap_or(()); }
-                    let _ = entry.unpack(&out_path);
+                    let _ = entry.unpack_in(&out_path);
                 }
             }
             #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; for (path, mode) in dir_modes.into_iter().rev() { fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap_or(()); } }
