@@ -10,8 +10,9 @@ use crate::utils::extract_archive_with_progress;
 #[cfg(feature = "compat")]
 pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, branch: String, progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static, extract_progress: impl Fn(u64, u64) + Send + 'static) -> bool {
     if !path.exists() || edition.is_empty() || branch.is_empty() { return false; }
+    if crate::utils::steamrt_up_to_date(dest.as_path(), edition.clone(), branch.clone()) == Some(true) { return true; }
 
-    let code = match edition.as_str() { "steamrt3" => "sniper", "steamrt4" => "4", _ => return false};
+    let code = match edition.as_str() { "steamrt3" => "sniper", "steamrt4" => "4", _ => return false };
     let archive = if cfg!(target_arch = "aarch64") { format!("SteamLinuxRuntime_{code}-arm64.tar.xz") } else if cfg!(target_arch = "x86_64") { format!("SteamLinuxRuntime_{code}.tar.xz") } else { return false; };
     let p = path.join(&archive);
     let expected_hash = match tokio::task::spawn_blocking({ let edition = edition.clone(); let branch = branch.clone(); move || get_steamrt_checksums(edition, branch) }).await { Ok(Some(h)) => h, _ => return false };
@@ -20,8 +21,7 @@ pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, bra
     let mut downloaded = false;
     let progress = std::sync::Arc::new(std::sync::Mutex::new(progress));
     for _attempt in 1..=MAX_ATTEMPTS {
-        let token = crate::utils::url_safe_token(22);
-        let url = format!("https://repo.steampowered.com/{edition}/images/{branch}/{archive}?versions={token}");
+        let url = format!("https://repo.steampowered.com/{edition}/images/{branch}/{archive}");
         let cl = AsyncDownloader::setup_client(true).await;
         let dl = AsyncDownloader::new(std::sync::Arc::new(cl), url).await;
         let Ok(mut d) = dl else { continue; };
@@ -49,20 +49,15 @@ pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, bra
 }
 
 #[cfg(feature = "compat")]
-pub fn check_steamrt_update(edition: String, branch: String) -> Option<String> {
+pub(crate) fn get_steamrt_version(edition: String, branch: String) -> Option<String> {
     if edition.is_empty() || branch.is_empty() { return None; }
-    let token = crate::utils::url_safe_token(22);
-    let url = format!("https://repo.steampowered.com/{edition}/images/{branch}/VERSION.txt?versions={token}");
+    let url = format!("https://repo.steampowered.com/{edition}/images/{branch}/VERSION.txt");
     reqwest::blocking::get(url).ok()?.text().ok()
 }
 
 #[cfg(feature = "compat")]
 fn get_steamrt_checksums(edition: String, branch: String) -> Option<String> {
-    let token = crate::utils::url_safe_token(22);
-    let text = reqwest::blocking::Client::new()
-        .get(format!("https://repo.steampowered.com/{edition}/images/{branch}/SHA256SUMS?versions={token}"))
-        .header(reqwest::header::ACCEPT, "text/plain")
-        .send().ok()?.text().ok()?;
+    let text = reqwest::blocking::Client::new().get(format!("https://repo.steampowered.com/{edition}/images/{branch}/SHA256SUMS")).header(reqwest::header::ACCEPT, "text/plain").send().ok()?.text().ok()?;
     for line in text.lines() {
         let line = line.trim();
         if let Some(pos) = line.find('*') {

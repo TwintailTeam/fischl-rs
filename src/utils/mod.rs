@@ -505,22 +505,19 @@ pub fn parse_url(url: String) -> Result<reqwest::Url, String> {
 }
 
 pub fn available(path: impl AsRef<Path>) -> Option<u64> {
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    {
-        let mut disks = sysinfo::Disks::new_with_refreshed_list();
-        disks.sort_by(|a, b| {
-            let a = a.mount_point().as_os_str().len();
-            let b = b.mount_point().as_os_str().len();
-            a.cmp(&b).reverse()
-        });
+    let mut disks = sysinfo::Disks::new_with_refreshed_list();
+    disks.sort_by(|a, b| {
+        let a = a.mount_point().as_os_str().len();
+        let b = b.mount_point().as_os_str().len();
+        a.cmp(&b).reverse()
+    });
 
-        let path = path.as_ref().to_owned();
-        for disk in disks.iter() {
-            let dp = disk.mount_point().to_path_buf();
-            if path.starts_with(dp) { return Some(disk.available_space()); }
-        }
-        None
+    let path = path.as_ref().to_owned();
+    for disk in disks.iter() {
+        let dp = disk.mount_point().to_path_buf();
+        if path.starts_with(dp) { return Some(disk.available_space()); }
     }
+    None
 }
 
 pub fn get_disk_space(path: impl AsRef<Path>) -> (u64, u64) {
@@ -537,6 +534,40 @@ pub fn get_disk_space(path: impl AsRef<Path>) -> (u64, u64) {
         if path.starts_with(dp) { return (disk.available_space(), disk.total_space()); }
     }
     (0, 0)
+}
+
+#[cfg(feature = "compat")]
+fn get_local_steamrt_version(base_path: &Path) -> Option<String> {
+    let content = fs::read_to_string(base_path.join("VERSIONS.txt")).ok()?;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("depot") {
+            let mut parts = line.splitn(2, '\t');
+            parts.next(); // skip "depot"
+            let version = parts.next()?.split('\t').next()?.trim();
+            if !version.is_empty() { return Some(version.to_string()); }
+        }
+    }
+    None
+}
+
+#[cfg(feature = "compat")]
+pub fn steamrt_up_to_date(base_path: &Path, edition: String, branch: String) -> Option<bool> {
+    fn parse_version(v: &str) -> Option<(u64, u64, u64, u64)> {
+        let v = v.trim();
+        let mut parts = v.splitn(4, '.');
+        let a = parts.next()?.parse().ok()?;
+        let b = parts.next()?.parse().ok()?;
+        let c = parts.next()?.parse().ok()?;
+        let d = parts.next()?.parse().ok()?;
+        Some((a, b, c, d))
+    }
+
+    let local_str  = get_local_steamrt_version(base_path)?;
+    let remote_str = crate::compat::get_steamrt_version(edition, branch)?;
+    let local  = parse_version(&local_str)?;
+    let remote = parse_version(&remote_str)?;
+    Some(local >= remote)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
