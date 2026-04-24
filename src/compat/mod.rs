@@ -75,27 +75,43 @@ fn get_steamrt_checksums(edition: String, branch: String) -> Option<String> {
 }
 
 #[cfg(feature = "compat")]
-pub async fn download_runner(url: String, dest: String, extract: bool, progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static, extract_progress: impl Fn(u64, u64) + Send + 'static) -> bool {
+pub async fn download_runner(url: String, dest: String, checksum: String, extract: bool, progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static, extract_progress: impl Fn(u64, u64) + Send + 'static) -> bool {
     let d = std::path::Path::new(&dest);
-    if d.exists() {
-        let c = AsyncDownloader::setup_client(false).await;
-        let dl = AsyncDownloader::new(std::sync::Arc::new(c), url).await;
-        if dl.is_ok() {
-            let mut dll = dl.unwrap();
-            let fin = dll.get_filename().await;
-            let ext = crate::utils::get_full_extension(fin).unwrap();
-            let name = String::from("runner.").add(ext);
-            let dp = d.to_path_buf().join(name.as_str());
-            let dla = dll.download(dp.clone(), progress).await;
-            if dla.is_ok() {
-                if extract { extract_archive_with_progress(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true, extract_progress) } else { true }
-            } else { false }
-        } else { false }
-    } else {
-        let r = std::fs::create_dir_all(d);
-        match r {
-            Ok(_) => { false }
-            Err(_) => { false }
+    if !d.exists() { if std::fs::create_dir_all(d).is_err() { return false; } }
+
+    let c = AsyncDownloader::setup_client(true).await;
+    let dl = AsyncDownloader::new(std::sync::Arc::new(c), url.clone()).await;
+    let Ok(dll) = dl else { return false; };
+    let fin = dll.get_filename().await;
+    let ext = crate::utils::get_full_extension(fin).unwrap();
+    let name = String::from("runner.").add(ext);
+    let dp = d.to_path_buf().join(name.as_str());
+
+    const MAX_ATTEMPTS: u8 = 3;
+    let mut downloaded = false;
+    let progress = std::sync::Arc::new(std::sync::Mutex::new(progress));
+    for _attempt in 1..=MAX_ATTEMPTS {
+        let c = AsyncDownloader::setup_client(true).await;
+        let dl = AsyncDownloader::new(std::sync::Arc::new(c), url.clone()).await;
+        let Ok(mut dll) = dl else { continue; };
+        let prc = progress.clone();
+        match dll.download(dp.as_path(), move |first, second, third, fourth| {
+            let mut pl = prc.lock().unwrap();
+            pl(first, second, third, fourth);
+        }).await {
+            Ok(_) => {
+                match tokio::fs::read(&dp).await {
+                    Ok(bytes) => {
+                        use sha2::{Digest, Sha256};
+                        let actual_hash = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect::<String>();
+                        if actual_hash == checksum { downloaded = true; break; } else { let _ = tokio::fs::remove_file(&dp).await; }
+                    }
+                    Err(_) => { let _ = tokio::fs::remove_file(&dp).await; }
+                }
+            }
+            Err(_) => { let _ = tokio::fs::remove_file(&dp).await; }
         }
     }
+    if !downloaded { return false; }
+    if extract { extract_archive_with_progress(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true, extract_progress) } else { true }
 }

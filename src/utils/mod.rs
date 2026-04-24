@@ -282,9 +282,22 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                         if extracted.saturating_sub(last_report) >= REPORT_EVERY { last_report = extracted; progress_callback(extracted, total_size); }
                     }
                     #[cfg(unix)] if let Ok(mode) = entry.header().mode() { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&out_path, fs::Permissions::from_mode(mode & 0o7777)).unwrap_or(()); }
-                } else {
+                } else if kind.is_symlink() {
                     if let Some(parent) = out_path.parent() { fs::create_dir_all(parent).unwrap_or(()); }
-                    let _ = entry.unpack_in(&out_path);
+                    #[cfg(unix)] {
+                        if let Ok(Some(target)) = entry.link_name() {
+                            // Remove stale target before creating, ignore error if absent
+                            let _ = fs::remove_file(&out_path);
+                            let _ = std::os::unix::fs::symlink(target, &out_path);
+                        }
+                    }
+                } else if kind.is_hard_link() {
+                    if let Some(parent) = out_path.parent() { fs::create_dir_all(parent).unwrap_or(()); }
+                    if let Ok(Some(target)) = entry.link_name() {
+                        // Hard link targets in tarballs are relative to the archive root
+                        let link_src = dest_path.join(PathBuf::from(target.as_ref()).strip_prefix(top_prefix.as_deref().unwrap_or(Path::new(""))).unwrap_or(Path::new(target.as_ref())));
+                        let _ = fs::hard_link(&link_src, &out_path);
+                    }
                 }
             }
             #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; for (path, mode) in dir_modes.into_iter().rev() { fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap_or(()); } }
@@ -331,9 +344,22 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                         if extracted.saturating_sub(last_report) >= REPORT_EVERY { last_report = extracted; progress_callback(extracted, total_size); }
                     }
                     #[cfg(unix)] if let Ok(mode) = entry.header().mode() { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&out_path, fs::Permissions::from_mode(mode & 0o7777)).unwrap_or(()); }
-                } else {
+                } else if kind.is_symlink() {
                     if let Some(parent) = out_path.parent() { fs::create_dir_all(parent).unwrap_or(()); }
-                    let _ = entry.unpack_in(&out_path);
+                    #[cfg(unix)] {
+                        if let Ok(Some(target)) = entry.link_name() {
+                            // Remove stale target before creating, ignore error if absent
+                            let _ = fs::remove_file(&out_path);
+                            let _ = std::os::unix::fs::symlink(target, &out_path);
+                        }
+                    }
+                } else if kind.is_hard_link() {
+                    if let Some(parent) = out_path.parent() { fs::create_dir_all(parent).unwrap_or(()); }
+                    if let Ok(Some(target)) = entry.link_name() {
+                        // Hard link targets in tarballs are relative to the archive root
+                        let link_src = dest_path.join(PathBuf::from(target.as_ref()).strip_prefix(top_prefix.as_deref().unwrap_or(Path::new(""))).unwrap_or(Path::new(target.as_ref())));
+                        let _ = fs::hard_link(&link_src, &out_path);
+                    }
                 }
             }
             #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; for (path, mode) in dir_modes.into_iter().rev() { fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap_or(()); } }
