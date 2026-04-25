@@ -1,4 +1,3 @@
-#[cfg(target_os = "linux")]
 pub mod compat;
 pub mod utils;
 pub mod download;
