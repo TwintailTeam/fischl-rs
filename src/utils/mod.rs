@@ -5,8 +5,10 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use md5::Digest;
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncReadExt;
 pub use downloader::SpeedTracker;
 
 pub(crate) mod proto;
@@ -76,11 +78,19 @@ pub(crate) fn move_all<'a>(src: &'a Path, dst: &'a Path) -> Pin<Box<dyn Future<O
 
 pub(crate) async fn validate_checksum(file: &Path, checksum: String) -> bool {
     match tokio::fs::File::open(file).await {
-        Ok(f) => {
-            match chksum_md5::async_chksum(f).await {
-                Ok(digest) => digest.to_hex_lowercase() == checksum.to_ascii_lowercase(),
-                Err(_) => false,
+        Ok(mut f) => {
+            let mut hasher = md5::Md5::new();
+            let mut buf = vec![0u8; 256 * 1024];
+            loop {
+                match f.read(&mut buf).await {
+                    Ok(0) => break,
+                    Ok(n) => hasher.update(&buf[..n]),
+                    Err(_) => return false,
+                }
             }
+            let result = hasher.finalize();
+            let hex: String = result.iter().map(|b| format!("{:02x}", b)).collect();
+            hex == checksum.to_ascii_lowercase()
         }
         Err(_) => false,
     }
@@ -643,6 +653,39 @@ pub struct KuroGroupInfos {
     pub src_files: Vec<KuroResource>,
     #[serde(rename = "dstFiles", default)]
     pub dst_files: Vec<KuroResource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BeyondPatchIndex {
+    pub version: String,
+    pub vfs_base_path: String,
+    pub files: Vec<ZippedPatchFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZippedPatchFile {
+    pub name: String,
+    #[serde(default)]
+    pub name_path: String,
+    pub md5: String,
+    pub size: u64,
+    #[serde(rename = "diffType")]
+    pub diff_type: u8,
+    pub local_path: Option<String>,
+    pub patch: Option<Vec<ZippedHdiffEntry>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZippedHdiffEntry {
+    pub base_file: String,
+    #[serde(default)]
+    pub base_file_path: String,
+    pub base_md5: String,
+    pub base_size: u64,
+    pub patch: String,
+    #[serde(default)]
+    pub patch_path: String,
+    pub patch_size: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]

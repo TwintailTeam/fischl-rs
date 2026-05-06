@@ -1,9 +1,12 @@
 use crate::download::game::{Game, Zipped};
-use crate::utils::{FailedChunk, validate_checksum};
+use crate::utils::{BeyondPatchIndex, FailedChunk, extract_archive_with_progress, move_all, validate_checksum};
 use crate::utils::downloader::AsyncDownloader;
+use hdiffpatch_rs::patchers::HDiff;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
+use std::time::Duration;
 
 impl Zipped for Game {
     async fn download(url: String, hash: String, game_path: String, use_patching_structure: bool, use_repair_structure: bool, progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<Mutex<std::collections::HashSet<String>>>>) -> bool {
@@ -94,7 +97,131 @@ impl Zipped for Game {
         success
     }
 
-    async fn patch(_url: String, _game_path: String, _progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, _cancel_token: Option<Arc<AtomicBool>>, _verified_files: Option<Arc<Mutex<std::collections::HashSet<String>>>>) -> bool { true }
+    async fn patch<F>(url: String, hash: String, game_path: String, progress: F, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<Mutex<std::collections::HashSet<String>>>>) -> bool where F: Fn(u64, u64, u64, u64, u64, u64, u8) + Send + Sync + 'static {
+        if url.is_empty() || game_path.is_empty() { return false; }
+
+        let chunk_file = Path::new(&url).to_path_buf();
+        if !chunk_file.exists() { return false; }
+
+        let mainp = Path::new(game_path.as_str()).to_path_buf();
+        let p = mainp.join("patching");
+        let dlp = mainp.join("downloading");
+        let dlr = mainp.join("repairing");
+        if dlp.exists() { let _ = std::fs::remove_dir_all(&dlp); }
+        if dlr.exists() { let _ = std::fs::remove_dir_all(&dlr); }
+
+        let staging = p.join("staging");
+        if !staging.exists() { tokio::fs::create_dir_all(&staging).await.unwrap(); }
+        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { return false; } }
+
+        let file_name = chunk_file.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let already_verified = verified_files.as_ref().map(|vf| vf.lock().unwrap().contains(&file_name)).unwrap_or(false);
+        if !already_verified {
+            if !hash.is_empty() { if !validate_checksum(chunk_file.as_path(), hash.to_ascii_lowercase()).await { return false; } }
+            if let Some(vf) = &verified_files { vf.lock().unwrap().insert(file_name.clone()); }
+        }
+
+        if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { return false; } }
+
+        let progress = Arc::new(progress);
+        let install_counter = Arc::new(AtomicU64::new(0));
+        let install_total_arc = Arc::new(AtomicU64::new(0));
+
+        let monitor_handle = tokio::spawn({
+            let install_counter = install_counter.clone();
+            let install_total_arc = install_total_arc.clone();
+            let progress = progress.clone();
+            async move {
+                loop {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    let ic = install_counter.load(Ordering::SeqCst);
+                    let it = install_total_arc.load(Ordering::SeqCst);
+                    progress(0, 0, ic, it, 0, 0, 3);
+                }
+            }
+        });
+
+        let merged_zip = chunk_file.with_extension("");
+        if merged_zip.exists() { let _ = std::fs::remove_file(&merged_zip); }
+
+        {
+            let last_reported = Arc::new(AtomicU64::new(0));
+            let ic = install_counter.clone();
+            let it = install_total_arc.clone();
+            extract_archive_with_progress(url.clone(), staging.to_str().unwrap().to_string(), false, move |done, total| {
+                it.store(total, Ordering::SeqCst);
+                let prev = last_reported.load(Ordering::Relaxed);
+                let delta = done.saturating_sub(prev);
+                if delta > 0 { last_reported.store(done, Ordering::Relaxed); ic.fetch_add(delta, Ordering::SeqCst); }
+            });
+        }
+        let merged_zip = chunk_file.with_extension("");
+        if merged_zip.exists() { let _ = std::fs::remove_file(&merged_zip); }
+
+        let extraction_total = install_total_arc.load(Ordering::SeqCst);
+        let already_credited = install_counter.load(Ordering::SeqCst);
+        let remainder = extraction_total.saturating_sub(already_credited);
+        if remainder > 0 { install_counter.fetch_add(remainder, Ordering::SeqCst); }
+
+        let manifest_file = staging.join("patch.json");
+        if !manifest_file.exists() { monitor_handle.abort(); return false; }
+        let content = match std::fs::read_to_string(&manifest_file) { Ok(c) => c, Err(_) => { monitor_handle.abort(); return false; } };
+        let index: BeyondPatchIndex = match serde_json::from_str(&content) { Ok(i) => i, Err(_) => { monitor_handle.abort(); return false; } };
+        let vfs_base = index.vfs_base_path.clone();
+        let patch_total: u64 = index.files.iter().filter(|f| f.patch.is_some()).map(|f| f.size).sum();
+        let install_total = install_total_arc.fetch_add(patch_total, Ordering::SeqCst) + patch_total;
+
+        let vfs_files_src = staging.join("vfs_files").join("files");
+        if vfs_files_src.exists() { let _ = move_all(vfs_files_src.as_ref(), staging.as_ref()).await; }
+
+        let vfs_patch_dir = staging.join("vfs_files").join("vfs_patch");
+        let diff_dir = if vfs_patch_dir.exists() {
+            std::fs::read_dir(&vfs_patch_dir).ok().and_then(|mut rd| rd.find_map(|e| {
+                let e = e.ok()?;
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with("diff_") && e.path().is_dir() { Some(name) } else { None }
+            }))
+        } else { None };
+
+        for fe in index.files.iter().filter(|f| f.patch.is_some()) {
+            if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { monitor_handle.abort(); return false; } }
+            let output_path = staging.join(&vfs_base).join(&fe.name);
+            if let Some(parent) = output_path.parent() { let _ = std::fs::create_dir_all(parent); }
+            let entries = fe.patch.as_ref().unwrap();
+            let mut patched = false;
+            for entry in entries.iter().filter(|e| diff_dir.as_deref().map_or(true, |d| e.patch.starts_with(&format!("{}/", d)))) {
+                if let Some(token) = &cancel_token { if token.load(Ordering::Relaxed) { monitor_handle.abort(); return false; } }
+                let base_path = mainp.join(&vfs_base).join(&entry.base_file);
+                let patch_file = vfs_patch_dir.join(&entry.patch);
+                if !base_path.exists() || !patch_file.exists() { continue; }
+                let mut hdiff = HDiff::new(base_path.to_str().unwrap().to_string(), patch_file.to_str().unwrap().to_string(), output_path.to_str().unwrap().to_string());
+                if hdiff.apply() { patched = true; break; } else { eprintln!("HDiff apply failed for {}", fe.name); }
+            }
+            if patched { let v = install_counter.fetch_add(fe.size, Ordering::SeqCst) + fe.size; progress(0, 0, v, install_total, 0, 0, 3); } else if !entries.is_empty() { eprintln!("No patch applied for {}", fe.name); }
+        }
+
+        monitor_handle.abort();
+        progress(0, 0, install_total, install_total, 0, 0, 5);
+
+        let delete_list = staging.join("delete_files.txt");
+        if delete_list.exists() {
+            if let Ok(content) = std::fs::read_to_string(&delete_list) {
+                for line in content.lines() {
+                    let line = line.trim();
+                    if line.is_empty() { continue; }
+                    let target = mainp.join(line);
+                    if target.exists() { let _ = std::fs::remove_file(&target); }
+                }
+            }
+        }
+
+        let _ = tokio::fs::remove_dir_all(staging.join("vfs_files")).await;
+        let _ = tokio::fs::remove_file(staging.join("patch.json")).await;
+        let _ = tokio::fs::remove_file(staging.join("delete_files.txt")).await;
+        let moved = move_all(staging.as_ref(), mainp.as_ref()).await;
+        if moved.is_ok() { let _ = tokio::fs::remove_dir_all(&p).await; }
+        true
+    }
 
     async fn repair_game(_res_list: String, _game_path: String, _is_fast: bool, _progress: impl Fn(u64, u64, u64, u64) + Send + Sync + 'static, _cancel_token: Option<Arc<AtomicBool>>, _verified_files: Option<Arc<Mutex<std::collections::HashSet<String>>>>) -> bool { true }
 }

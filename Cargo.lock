@@ -209,67 +209,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
-name = "chksum-core"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0475dc9fa905fe8feca5c4a48a97f65503ebd257a7566df1367d080083e160c6"
-dependencies = [
- "async-trait",
- "chksum-hash-core",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
-name = "chksum-hash-core"
-version = "0.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "221456234d441c788a2c51a27b91c4380f499de560670a67d3303e621d37b3bd"
-
-[[package]]
-name = "chksum-hash-md5"
-version = "0.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8445e9efb2556cedf4ef2bf704cb335cdd037ed20fe954f281baf93fe5e7c0d"
-dependencies = [
- "chksum-hash-core",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "chksum-md5"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dda0016624d188e791afdf491de89d0157411dafedb0a46dbcd3f1a13ef0a611"
-dependencies = [
- "chksum-core",
- "chksum-hash-md5",
- "chksum-reader",
- "chksum-writer",
- "tokio",
-]
-
-[[package]]
-name = "chksum-reader"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af7d69fcedbfade7ccc72ea1e234690e142a7d0f1bdd1b4b927752508d493ca6"
-dependencies = [
- "chksum-core",
- "tokio",
-]
-
-[[package]]
-name = "chksum-writer"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "282623704dd76ee0adbe1276a6ccfcd6d3021566fefcf8e677371283a723f0d0"
-dependencies = [
- "chksum-core",
- "tokio",
-]
-
-[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -518,12 +457,12 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 name = "fischl"
 version = "0.1.0"
 dependencies = [
- "chksum-md5",
  "crossbeam-deque",
  "flate2",
  "futures-util",
  "hdiffpatch-rs",
  "liblzma",
+ "md-5",
  "prost",
  "prost-build",
  "protoc-bin-vendored",
@@ -775,7 +714,7 @@ checksum = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51"
 [[package]]
 name = "hdiffpatch-rs"
 version = "0.1.0"
-source = "git+https://github.com/TwintailTeam/hdiffpatch-rs.git?branch=master#fd5c6b965ddfa19d3ae45111ec10ecfc53447ea1"
+source = "git+https://github.com/TwintailTeam/hdiffpatch-rs.git?branch=master#121fe9d7ad7f75014739b05d510f40350c75d293"
 dependencies = [
  "zstd",
 ]
@@ -1239,6 +1178,16 @@ checksum = "96d43a6fec3e2f1176fd435ff6f0e337dab57361918f0f51bbc75995151e2ca0"
 dependencies = [
  "crc",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "md-5"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69b6441f590336821bb897fb28fc622898ccceb1d6cea3fde5ea86b090c4de98"
+dependencies = [
+ "cfg-if",
+ "digest 0.11.2",
 ]
 
 [[package]]

@@ -12,7 +12,7 @@ protoc-bin-vendored = "3"
 [dependencies]
 serde = {version = "1", features = ["derive"]}
 reqwest = {version = "0.13.3", features = ["blocking", "json", "stream", "native-tls-vendored", "__tls"]}
-chksum-md5 = {version = "0.1.0", features = ["async-runtime-tokio"], optional = true}
+md-5 = {version = "0.11.0", optional = true}
 sha2 = {version = "0.11.0", optional = true}
 prost = {version = "0.14.3", features = [], optional = true}
 tokio = {version = "1.52", features = ["macros", "fs", "io-util", "time", "sync"]}
@@ -29,12 +29,10 @@ liblzma = {version = "0.4.6", features = ["static"], optional = true}
 zstd = {version = "0.13.3", optional = true}
 zesven = {git = "https://github.com/TukanDev/zesven.git", branch = "main", features = ["zstd", "lz4", "brotli"], optional = true}
 crossbeam-deque = {version = "0.8.6", optional = true}
-
-# patching lib
 hdiffpatch-rs = { git = "https://github.com/TwintailTeam/hdiffpatch-rs.git", branch = "master" }
 
 [features]
 compat = ["dep:sha2"]
-download = ["dep:zip", "dep:tar", "dep:flate2", "dep:liblzma", "dep:zstd", "dep:zesven", "dep:chksum-md5", "dep:prost", "dep:crossbeam-deque"]
+download = ["dep:zip", "dep:tar", "dep:flate2", "dep:liblzma", "dep:zstd", "dep:zesven", "dep:md-5", "dep:prost", "dep:crossbeam-deque"]
 
 default = ["download"]
