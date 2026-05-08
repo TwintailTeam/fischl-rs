@@ -23,8 +23,8 @@ impl Sophon for Game {
         let dlr = p.join("repairing");
         let dlptch = p.join("patching");
 
-        if dlr.exists() { fs::remove_dir_all(&dlr).unwrap(); }
-        if dlptch.exists() { fs::remove_dir_all(&dlptch).unwrap(); }
+        if dlr.exists() { let _ = fs::remove_dir_all(&dlr); }
+        if dlptch.exists() { let _ = fs::remove_dir_all(&dlptch); }
 
         let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap().with_cancel_token(cancel_token.clone());
@@ -247,7 +247,7 @@ impl Sophon for Game {
                 progress(download_total, download_total, install_total, install_total, 0, 0, 5);
                 // Move from "staging" to "game_path" and delete "downloading" directory
                 let moved = move_all(Path::new(&staging), Path::new(&game_path)).await;
-                if moved.is_ok() { fs::remove_dir_all(dlp.as_path()).unwrap(); }
+                if moved.is_ok() { let _ = fs::remove_dir_all(dlp.as_path()); }
                 true
             } else { false }
         } else { false }
@@ -261,8 +261,8 @@ impl Sophon for Game {
         let dlp = p.join("downloading");
         let dlr = p.join("repairing");
 
-        if dlp.exists() { fs::remove_dir_all(&dlp).unwrap(); }
-        if dlr.exists() { fs::remove_dir_all(&dlr).unwrap(); }
+        if dlp.exists() { let _ = fs::remove_dir_all(&dlp); }
+        if dlr.exists() { let _ = fs::remove_dir_all(&dlr); }
 
         let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap().with_cancel_token(cancel_token.clone());
@@ -862,7 +862,7 @@ impl Sophon for Game {
                 progress(download_total, download_total, install_total, install_total, 0, 0, 5);
                 let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
                 if moved.is_ok() {
-                    if preloaded {} else { fs::remove_dir_all(p.as_path()).unwrap(); }
+                    if preloaded {} else { let _ = fs::remove_dir_all(p.as_path()); }
                     let purge_list: Vec<(String, DeleteFiles)> = delete_files_list.into_iter().filter(|(v, _f)| version.as_str() == v.as_str()).collect();
                     if !purge_list.is_empty() {
                         for (_v, df) in purge_list.into_iter() {
@@ -887,8 +887,8 @@ impl Sophon for Game {
         let dlp = p.join("downloading");
         let dlptch = p.join("patching");
 
-        if dlp.exists() { fs::remove_dir_all(&dlp).unwrap(); }
-        if dlptch.exists() { fs::remove_dir_all(&dlptch).unwrap(); }
+        if dlp.exists() { let _ = fs::remove_dir_all(&dlp); }
+        if dlptch.exists() { let _ = fs::remove_dir_all(&dlptch); }
 
         let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap().with_cancel_token(cancel_token.clone());
@@ -1092,7 +1092,7 @@ impl Sophon for Game {
                 monitor_handle.abort();
                 // All files are complete make sure we report done just in case
                 progress(download_total, download_total, install_total, install_total, 0, 0, 0);
-                if p.exists() { fs::remove_dir_all(p.as_path()).unwrap(); }
+                if p.exists() { let _ = fs::remove_dir_all(p.as_path()); }
                 true
             } else { false }
         } else { false }
@@ -1107,8 +1107,8 @@ impl Sophon for Game {
         let dlp = mainp.join("downloading");
 
         // If these directories exist delete them for safety
-        if dlr.exists() { fs::remove_dir_all(&dlr).unwrap(); }
-        if dlp.exists() { fs::remove_dir_all(&dlp).unwrap(); }
+        if dlr.exists() { let _ = fs::remove_dir_all(&dlr); }
+        if dlp.exists() { let _ = fs::remove_dir_all(&dlp); }
 
         let client = Arc::new(AsyncDownloader::setup_client(false).await);
         let mut dl = AsyncDownloader::new(client.clone(), manifest).await.unwrap().with_cancel_token(cancel_token.clone());

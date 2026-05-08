@@ -18,14 +18,14 @@ impl Zipped for Game {
         let dlptch = p.join("patching");
 
         if use_patching_structure {
-            if dlp.exists() { std::fs::remove_dir_all(&dlp).unwrap(); }
-            if dlr.exists() { std::fs::remove_dir_all(&dlr).unwrap(); }
+            if dlp.exists() { let _ = std::fs::remove_dir_all(&dlp); }
+            if dlr.exists() { let _ = std::fs::remove_dir_all(&dlr); }
         } else if use_repair_structure {
-            if dlp.exists() { std::fs::remove_dir_all(&dlp).unwrap(); }
-            if dlptch.exists() { std::fs::remove_dir_all(&dlptch).unwrap(); }
+            if dlp.exists() { let _ = std::fs::remove_dir_all(&dlp); }
+            if dlptch.exists() { let _ = std::fs::remove_dir_all(&dlptch); }
         } else {
-            if dlr.exists() { std::fs::remove_dir_all(&dlr).unwrap(); }
-            if dlptch.exists() { std::fs::remove_dir_all(&dlptch).unwrap(); }
+            if dlr.exists() { let _ = std::fs::remove_dir_all(&dlr); }
+            if dlptch.exists() { let _ = std::fs::remove_dir_all(&dlptch); }
         }
 
         let staging = if use_patching_structure { dlptch.join("staging") } else if use_repair_structure { dlr.join("staging") } else { dlp.join("staging") };
@@ -215,11 +215,11 @@ impl Zipped for Game {
             }
         }
 
-        let _ = tokio::fs::remove_dir_all(staging.join("vfs_files")).await;
-        let _ = tokio::fs::remove_file(staging.join("patch.json")).await;
-        let _ = tokio::fs::remove_file(staging.join("delete_files.txt")).await;
+        let _ = std::fs::remove_dir_all(staging.join("vfs_files"));
+        let _ = std::fs::remove_file(staging.join("patch.json"));
+        let _ = std::fs::remove_file(staging.join("delete_files.txt"));
         let moved = move_all(staging.as_ref(), mainp.as_ref()).await;
-        if moved.is_ok() { let _ = tokio::fs::remove_dir_all(&p).await; }
+        if moved.is_ok() { let _ = std::fs::remove_dir_all(&p); }
         true
     }
 
