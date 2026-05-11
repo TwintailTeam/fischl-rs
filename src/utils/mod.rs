@@ -588,7 +588,7 @@ fn get_local_steamrt_version(base_path: &Path) -> Option<String> {
 }
 
 #[cfg(feature = "compat")]
-pub fn steamrt_up_to_date(base_path: &Path, edition: String, branch: String) -> Option<bool> {
+pub fn steamrt_up_to_date(base_path: &Path, remote_version: &str) -> Option<bool> {
     fn parse_version(v: &str) -> Option<(u64, u64, u64, u64)> {
         let v = v.trim();
         let mut parts = v.splitn(4, '.');
@@ -600,9 +600,8 @@ pub fn steamrt_up_to_date(base_path: &Path, edition: String, branch: String) -> 
     }
 
     let local_str  = get_local_steamrt_version(base_path)?;
-    let remote_str = crate::compat::get_steamrt_version(edition, branch)?;
     let local  = parse_version(&local_str)?;
-    let remote = parse_version(&remote_str)?;
+    let remote = parse_version(remote_version)?;
     Some(local >= remote)
 }
 

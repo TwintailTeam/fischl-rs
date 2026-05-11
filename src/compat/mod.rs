@@ -10,7 +10,7 @@ use crate::utils::extract_archive_with_progress;
 #[cfg(feature = "compat")]
 pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, branch: String, progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static, extract_progress: impl Fn(u64, u64) + Send + 'static) -> bool {
     if !path.exists() || edition.is_empty() || branch.is_empty() { return false; }
-    if crate::utils::steamrt_up_to_date(dest.as_path(), edition.clone(), branch.clone()) == Some(true) { return true; }
+    if crate::utils::steamrt_up_to_date(dest.as_path(), &branch) == Some(true) { return true; }
 
     let code = match edition.as_str() { "steamrt3" => "sniper", "steamrt4" => "4", _ => return false };
     let archive = if cfg!(target_arch = "aarch64") { format!("SteamLinuxRuntime_{code}-arm64.tar.xz") } else if cfg!(target_arch = "x86_64") { format!("SteamLinuxRuntime_{code}.tar.xz") } else { return false; };
@@ -49,10 +49,10 @@ pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, bra
 }
 
 #[cfg(feature = "compat")]
-pub(crate) fn get_steamrt_version(edition: String, branch: String) -> Option<String> {
+pub async fn get_steamrt_version(edition: String, branch: String) -> Option<String> {
     if edition.is_empty() || branch.is_empty() { return None; }
     let url = format!("https://repo.steampowered.com/{edition}/images/{branch}/VERSION.txt");
-    reqwest::blocking::get(url).ok()?.text().ok()
+    reqwest::get(url).await.ok()?.text().await.ok()
 }
 
 #[cfg(feature = "compat")]
