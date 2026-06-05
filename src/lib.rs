@@ -20,7 +20,7 @@ mod tests {
         println!("Into: {out}");
         println!("Strip head: {strip}");
 
-        actually_uncompress_with_progress(archive, out, strip, |done, total| {
+        actually_uncompress_with_progress(archive, out, strip, None, |done, total| {
             if total > 0 {
                 let pct = done as f64 / total as f64 * 100.0;
                 println!("{pct:5.1}% | {}/{}", prettify_bytes(done), prettify_bytes(total));
@@ -70,22 +70,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn download_jadeite_test() {
-        let dest = "/home/tukan/.local/share/twintaillauncher/extras/jadeite/testing";
-        let success = Extras::download_extra_package("jadeite".to_string(), "v5.0.1-hotfix".to_string(), true, false, false, dest.to_string(), move |current, total| {
-            println!("current: {}, total: {}", current, total);
-        }).await;
-        if success {
-            println!("jadeite downloaded!");
-        } else {
-            println!("failed to download jadeite");
-        }
-    }
-
-    #[tokio::test]
     async fn download_fullgame_test() {
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Zipped>::download("".to_string(), path.parse().unwrap(), false, false, |current, total, som1, som2| {
+        let rep = <Game as Zipped>::download("".to_string(), "".to_string(), path.parse().unwrap(), false, false, |current, total, som1, som2| {
             println!("current: {} | total: {}", current, total);
         }, None, None).await;
         if rep {
@@ -99,7 +86,7 @@ mod tests {
     async fn download_hdiff_test() {
         let url = "https://autopatchhk.yuanshen.com/client_app/update/hk4e_global/game_5.4.0_5.5.0_hdiff_IlvHovyEdpXnwiCH.zip";
         let path = "/games/hoyo/hk4e_global/live/testing";
-        let rep = <Game as Zipped>::patch(url.parse().unwrap(), path.parse().unwrap(), |current,total, som1, som2| {
+        let rep = <Game as Zipped>::patch(url.parse().unwrap(), "".to_string(), path.parse().unwrap(), None, |current,total, som1, som2, som3, som4, som5| {
             println!("current: {}, total: {}", prettify_bytes(current), prettify_bytes(total));
         }, None, None).await;
         if rep {

@@ -45,7 +45,7 @@ pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, bra
         }
     }
     if !downloaded { return false; }
-    extract_archive_with_progress(p.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), true, extract_progress)
+    extract_archive_with_progress(p.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), true, None, extract_progress)
 }
 
 #[cfg(feature = "compat")]
@@ -113,5 +113,5 @@ pub async fn download_runner(url: String, dest: String, checksum: String, extrac
         }
     }
     if !downloaded { return false; }
-    if extract { extract_archive_with_progress(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true, extract_progress) } else { true }
+    if extract { extract_archive_with_progress(dp.to_str().unwrap().to_string(), d.to_str().unwrap().to_string(), true, None, extract_progress) } else { true }
 }

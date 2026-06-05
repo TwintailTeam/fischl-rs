@@ -97,7 +97,7 @@ impl Zipped for Game {
         success
     }
 
-    async fn patch<F>(url: String, hash: String, game_path: String, progress: F, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<Mutex<std::collections::HashSet<String>>>>) -> bool where F: Fn(u64, u64, u64, u64, u64, u64, u8) + Send + Sync + 'static {
+    async fn patch<F>(url: String, hash: String, game_path: String, archive_password: Option<String>, progress: F, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<Mutex<std::collections::HashSet<String>>>>) -> bool where F: Fn(u64, u64, u64, u64, u64, u64, u8) + Send + Sync + 'static {
         if url.is_empty() || game_path.is_empty() { return false; }
 
         let chunk_file = Path::new(&url).to_path_buf();
@@ -148,7 +148,7 @@ impl Zipped for Game {
             let last_reported = Arc::new(AtomicU64::new(0));
             let ic = install_counter.clone();
             let it = install_total_arc.clone();
-            extract_archive_with_progress(url.clone(), staging.to_str().unwrap().to_string(), false, move |done, total| {
+            extract_archive_with_progress(url.clone(), staging.to_str().unwrap().to_string(), false, archive_password, move |done, total| {
                 it.store(total, Ordering::SeqCst);
                 let prev = last_reported.load(Ordering::Relaxed);
                 let delta = done.saturating_sub(prev);

@@ -323,7 +323,7 @@ impl Kuro for Game {
                             let pc = progress.clone();
                             let it = install_total;
                             let dt = download_total;
-                            extract_archive_with_progress(zp.to_str().unwrap().to_string(), staging.to_str().unwrap().to_string(), false, move |done, _| {
+                            extract_archive_with_progress(zp.to_str().unwrap().to_string(), staging.to_str().unwrap().to_string(), false, None, move |done, _| {
                                 let prev = last_reported.load(Ordering::Relaxed);
                                 let delta = done.saturating_sub(prev);
                                 if delta > 0 { last_reported.store(done, Ordering::Relaxed); let v = ic.fetch_add(delta, Ordering::SeqCst) + delta; pc(dt, dt, v, it, 0, 0, 3); }
@@ -583,7 +583,7 @@ impl Kuro for Game {
                             let pc = progress.clone();
                             let it = install_total;
                             let dt = download_total;
-                            extract_archive_with_progress(zp.to_str().unwrap().to_string(), staging.to_str().unwrap().to_string(), false, move |done, _| {
+                            extract_archive_with_progress(zp.to_str().unwrap().to_string(), staging.to_str().unwrap().to_string(), false, None, move |done, _| {
                                 let prev = last_reported.load(Ordering::Relaxed);
                                 let delta = done.saturating_sub(prev);
                                 if delta > 0 { last_reported.store(done, Ordering::Relaxed); let v = ic.fetch_add(delta, Ordering::SeqCst) + delta; pc(dt, dt, v, it, 0, 0, 3); }

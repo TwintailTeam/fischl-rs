@@ -41,7 +41,7 @@ pub fn get_github_release(repository: String) -> Option<GithubRelease> {
     }
 }
 
-pub fn extract_archive_with_progress<F>(archive_path: String, extract_dest: String, move_subdirs: bool, progress_callback: F) -> bool where F: Fn(u64, u64) + Send + 'static {
+pub fn extract_archive_with_progress<F>(archive_path: String, extract_dest: String, move_subdirs: bool, password: Option<String>, progress_callback: F) -> bool where F: Fn(u64, u64) + Send + 'static {
     let src = Path::new(&archive_path);
     let dest = Path::new(&extract_dest);
 
@@ -49,7 +49,7 @@ pub fn extract_archive_with_progress<F>(archive_path: String, extract_dest: Stri
         false
     } else {
         if !dest.exists() { fs::create_dir_all(dest).unwrap(); }
-        actually_uncompress_with_progress(src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), move_subdirs, progress_callback);
+        actually_uncompress_with_progress(src.to_str().unwrap().to_string(), dest.to_str().unwrap().to_string(), move_subdirs, password, progress_callback);
         if src.exists() { fs::remove_file(src).unwrap(); }
         true
     }
@@ -132,27 +132,31 @@ fn merge_split_archive(first_part: &Path) -> Option<PathBuf> {
     let base_name = &first_name[..dot_pos];
 
     let mut parts: Vec<(u32, PathBuf)> = fs::read_dir(parent).ok()?.flatten().filter_map(|e| {
-            let name = e.file_name();
-            let s = name.to_str()?;
-            let num_str = s.strip_prefix(base_name)?.strip_prefix('.')?;
-            if num_str.is_empty() || !num_str.chars().all(|c| c.is_ascii_digit()) { return None; }
-            Some((num_str.parse::<u32>().ok()?, e.path()))
-        }).collect();
+        let name = e.file_name();
+        let s = name.to_str()?;
+        let num_str = s.strip_prefix(base_name)?.strip_prefix('.')?;
+        if num_str.is_empty() || !num_str.chars().all(|c| c.is_ascii_digit()) { return None; }
+        Some((num_str.parse::<u32>().ok()?, e.path()))
+    }).collect();
 
     if parts.is_empty() { return None; }
     parts.sort_unstable_by_key(|(n, _)| *n);
+    let total_size: u64 = parts.iter().filter_map(|(_, p)| fs::metadata(p).ok()).map(|m| m.len()).sum();
     let merged = parent.join(base_name);
-    let mut out = fs::File::create(&merged).ok()?;
+    let out_file = fs::File::create(&merged).ok()?;
+    if total_size > 0 { out_file.set_len(total_size).ok()?; }
+    let mut out = io::BufWriter::with_capacity(4 * 1024 * 1024, out_file);
     for (_, part) in &parts {
-        let mut f = fs::File::open(part).ok()?;
+        let mut f = io::BufReader::with_capacity(4 * 1024 * 1024, fs::File::open(part).ok()?);
         io::copy(&mut f, &mut out).ok()?;
         drop(f);
         let _ = fs::remove_file(part);
     }
+    out.flush().ok()?;
     Some(merged)
 }
 
-pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: String, strip_head_path: bool, progress_callback: F) where F: Fn(u64, u64) + Send + 'static {
+pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: String, strip_head_path: bool, password: Option<String>, progress_callback: F) where F: Fn(u64, u64) + Send + 'static {
     // If the path ends with a numeric extension (.001, .002, …) and the base is .zip, merge all parts first
     let archive_path = {
         let last_ext = archive_path.rsplit('.').next().unwrap_or("");
@@ -178,7 +182,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
             let mut dir_modes: Vec<(PathBuf, u32)> = Vec::new();
 
             for i in 0..archive.len() {
-                if let Ok(f) = archive.by_index(i) {
+                if let Ok(f) = archive.by_index_raw(i) {
                     let file_size = f.size();
                     total_size += file_size;
                     let unix_mode = f.unix_mode();
@@ -205,6 +209,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
             const REPORT_EVERY: u64 = 4 * 1024 * 1024;
             let cb = Arc::new(Mutex::new(progress_callback));
             let archive_path = Arc::new(archive_path);
+            let password = Arc::new(password);
 
             let mut handles = Vec::with_capacity(10);
             for _ in 0..10 {
@@ -213,6 +218,7 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                 let last_report = Arc::clone(&last_report);
                 let cb = Arc::clone(&cb);
                 let ap = Arc::clone(&archive_path);
+                let password = password.clone();
 
                 handles.push(std::thread::spawn(move || {
                     let file = match fs::File::open(ap.as_str()) { Ok(f) => f, Err(_) => return };
@@ -223,7 +229,12 @@ pub(crate) fn actually_uncompress_with_progress<F>(archive_path: String, dest: S
                         let item = work.lock().unwrap().pop();
                         let (idx, out_path, file_size, unix_mode) = match item { Some(v) => v, None => break };
                         #[cfg(not(unix))] let _ = unix_mode;
-                        let mut f = match archive.by_index(idx) { Ok(f) => f, Err(_) => { extracted.fetch_add(file_size, Ordering::Relaxed); continue; } };
+                        let mut f = if let Some(ref pw) = *password {
+                            match archive.by_index_decrypt(idx, pw.as_bytes()) { Ok(f) => f, Err(_) => { extracted.fetch_add(file_size, Ordering::Relaxed); continue; } }
+                        } else {
+                            match archive.by_index(idx) { Ok(f) => f, Err(_) => { extracted.fetch_add(file_size, Ordering::Relaxed); continue; } }
+                        };
+                        //let mut f = match archive.by_index(idx) { Ok(f) => f, Err(_) => { extracted.fetch_add(file_size, Ordering::Relaxed); continue; } };
                         let mut out_file = match fs::File::create(&out_path) { Ok(f) => f, Err(_) => { extracted.fetch_add(file_size, Ordering::Relaxed); continue; } };
 
                         if file_size > 0 { out_file.set_len(file_size).unwrap_or(()); }

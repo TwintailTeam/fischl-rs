@@ -30,7 +30,7 @@ impl Extras {
                                         let pn = if package_id.as_str() == "jadeite" || package_id.as_str() == "keqingunlock" { package_id.clone() } else { package_type.clone() };
                                         if let Err(_) = fs::write(ver_file, format!("{}={}", pn.clone().to_ascii_uppercase(), &pkg.version).as_bytes()) { return false; }
                                         if extract_mode {
-                                            let ext = crate::utils::extract_archive_with_progress(d.join(&pkg.package_name).to_str().unwrap().to_string(), dest.clone(), move_subdirs, |_c, _t| {});
+                                            let ext = crate::utils::extract_archive_with_progress(d.join(&pkg.package_name).to_str().unwrap().to_string(), dest.clone(), move_subdirs, None, |_c, _t| {});
                                             if ext { true } else { false }
                                         } else { true }
                                     } else { false }
