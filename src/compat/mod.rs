@@ -51,7 +51,7 @@ pub async fn download_steamrt(path: PathBuf, dest: PathBuf, edition: String, bra
 #[cfg(feature = "compat")]
 pub async fn get_steamrt_version(edition: String, branch: String) -> Option<String> {
     if edition.is_empty() || branch.is_empty() { return None; }
-    let url = format!("https://repo.steampowered.com/{edition}/images/{branch}/VERSION.txt");
+    let url = format!("https://repo.steampowered.com/{edition}/images/{branch}.txt");
     reqwest::get(url).await.ok()?.text().await.ok()
 }
 
