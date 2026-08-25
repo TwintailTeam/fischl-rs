@@ -6,6 +6,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use md5::Digest;
+use crc64fast::Digest as Crc64Digest;
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
@@ -77,20 +78,35 @@ pub(crate) fn move_all<'a>(src: &'a Path, dst: &'a Path) -> Pin<Box<dyn Future<O
 }
 
 pub(crate) async fn validate_checksum(file: &Path, checksum: String) -> bool {
+    if let Some(expected) = checksum.strip_prefix("crc64:") {
+        return match tokio::fs::File::open(file).await {
+            Ok(mut f) => {
+                let mut hasher = Crc64Digest::new();
+                let mut buf = vec![0u8; 256 * 1024];
+
+                loop {
+                    match f.read(&mut buf).await { Ok(0) => break, Ok(n) => hasher.write(&buf[..n]), Err(_) => return false, } }
+
+                hasher.sum64().to_string() == expected
+            }
+            Err(_) => false,
+        };
+    }
+
+    let expected = checksum.strip_prefix("md5:").unwrap_or(&checksum).to_ascii_lowercase();
+
     match tokio::fs::File::open(file).await {
         Ok(mut f) => {
             let mut hasher = md5::Md5::new();
             let mut buf = vec![0u8; 256 * 1024];
+
             loop {
-                match f.read(&mut buf).await {
-                    Ok(0) => break,
-                    Ok(n) => hasher.update(&buf[..n]),
-                    Err(_) => return false,
-                }
-            }
+                match f.read(&mut buf).await { Ok(0) => break, Ok(n) => hasher.update(&buf[..n]), Err(_) => return false, } }
+
             let result = hasher.finalize();
-            let hex: String = result.iter().map(|b| format!("{:02x}", b)).collect();
-            hex == checksum.to_ascii_lowercase()
+            let hex: String = result.iter().map(|b| format!("{b:02x}")).collect();
+
+            hex == expected
         }
         Err(_) => false,
     }

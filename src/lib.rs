@@ -6,9 +6,10 @@ pub mod download;
 mod tests {
     use std::fs;
     use std::io::Write;
+    use std::path::PathBuf;
     use crate::download::{Extras};
     use crate::download::game::{Game, Kuro, Sophon, Zipped};
-    use crate::utils::{actually_uncompress_with_progress, prettify_bytes};
+    use crate::utils::{actually_uncompress_with_progress, prettify_bytes, validate_checksum};
 
     #[test]
     fn test_extract() {
@@ -246,5 +247,22 @@ mod tests {
         } else {
             println!("preload_game_sophon failure!");
         }
+    }
+
+    #[tokio::test]
+    async fn validate_crc64_checksum() {
+        let path = PathBuf::from(std::env::temp_dir()).join(format!("fischl-crc64-test-{}", std::process::id()));
+
+        fs::write(&path, b"123456789").unwrap();
+
+        let result = validate_checksum(&path, "crc64:11051210869376104954".to_string()).await;
+
+        assert!(result);
+
+        let invalid = validate_checksum(&path, "crc64:0".to_string()).await;
+
+        assert!(!invalid);
+
+        fs::remove_file(path).unwrap();
     }
 }
