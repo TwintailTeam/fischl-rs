@@ -512,6 +512,7 @@ checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 name = "fischl"
 version = "0.1.0"
 dependencies = [
+ "crc64fast",
  "crossbeam-deque",
  "flate2",
  "futures-util",

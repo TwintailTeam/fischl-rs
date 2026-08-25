@@ -30,6 +30,7 @@ zstd = {version = "0.13.3", optional = true}
 zesven = {git = "https://github.com/TukanDev/zesven.git", branch = "main", features = ["zstd", "lz4", "brotli"], optional = true}
 crossbeam-deque = {version = "0.8.6", optional = true}
 hdiffpatch-rs = { git = "https://github.com/TwintailTeam/hdiffpatch-rs.git", branch = "master" }
+crc64fast = "1.1.0"
 
 [features]
 compat = ["dep:sha2"]

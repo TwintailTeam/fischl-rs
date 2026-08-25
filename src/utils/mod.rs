@@ -77,10 +77,39 @@ pub(crate) fn move_all<'a>(src: &'a Path, dst: &'a Path) -> Pin<Box<dyn Future<O
 }
 
 pub(crate) async fn validate_checksum(file: &Path, checksum: String) -> bool {
+    if let Some(expected) = checksum.strip_prefix("crc64:") {
+        return match tokio::fs::File::open(file).await {
+            Ok(mut f) => {
+                use crc64fast::Digest;
+                use tokio::io::AsyncReadExt;
+
+                let mut hasher = Digest::new();
+                let mut buf = vec![0u8; 256 * 1024];
+
+                loop {
+                    match f.read(&mut buf).await {
+                        Ok(0) => break,
+                        Ok(n) => hasher.write(&buf[..n]),
+                        Err(_) => return false,
+                    }
+                }
+
+                hasher.sum64().to_string() == expected
+            }
+            Err(_) => false,
+        };
+    }
+
+    let expected = checksum
+        .strip_prefix("md5:")
+        .unwrap_or(&checksum)
+        .to_ascii_lowercase();
+
     match tokio::fs::File::open(file).await {
         Ok(mut f) => {
             let mut hasher = md5::Md5::new();
             let mut buf = vec![0u8; 256 * 1024];
+
             loop {
                 match f.read(&mut buf).await {
                     Ok(0) => break,
@@ -88,11 +117,46 @@ pub(crate) async fn validate_checksum(file: &Path, checksum: String) -> bool {
                     Err(_) => return false,
                 }
             }
+
             let result = hasher.finalize();
-            let hex: String = result.iter().map(|b| format!("{:02x}", b)).collect();
-            hex == checksum.to_ascii_lowercase()
+            let hex: String = result.iter().map(|b| format!("{b:02x}")).collect();
+
+            hex == expected
         }
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_checksum;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[tokio::test]
+    async fn validate_crc64_checksum() {
+        let path = PathBuf::from(std::env::temp_dir())
+            .join(format!("fischl-crc64-test-{}", std::process::id()));
+
+        fs::write(&path, b"123456789").unwrap();
+
+        let result = validate_checksum(
+            &path,
+            "crc64:11051210869376104954".to_string(),
+        )
+        .await;
+
+        assert!(result);
+
+        let invalid = validate_checksum(
+            &path,
+            "crc64:0".to_string(),
+        )
+        .await;
+
+        assert!(!invalid);
+
+        fs::remove_file(path).unwrap();
     }
 }
 
