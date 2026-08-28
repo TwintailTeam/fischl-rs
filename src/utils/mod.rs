@@ -633,6 +633,19 @@ pub fn steamrt_up_to_date(base_path: &Path, remote_version: &str) -> Option<bool
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct YostarIndex {
+    pub source: String,
+    pub file: Vec<YostarResource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct YostarResource {
+    pub path: String,
+    pub hash: String,
+    pub size: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct KuroIndex {
     pub resource: Vec<KuroResource>,
     pub delete_files: Option<Vec<String>>,
