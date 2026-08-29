@@ -1,7 +1,7 @@
 use crate::download::game::{Game, Sophon};
 use crate::utils::downloader::AsyncDownloader;
 use crate::utils::proto::{DeleteFiles, FileChunk, ManifestFile, PatchChunk, PatchFile, SophonDiff, SophonManifest};
-use crate::utils::{FailedChunk, SpeedTracker, move_all, validate_checksum, url_safe_token};
+use crate::utils::{FailedChunk, SpeedTracker, move_all, prune_unlisted, validate_checksum, url_safe_token};
 use crossbeam_deque::{Injector, Steal, Worker};
 use prost::Message;
 use reqwest_middleware::ClientWithMiddleware;
@@ -914,6 +914,8 @@ impl Sophon for Game {
                 if !chunks.exists() { fs::create_dir_all(chunks.clone()).unwrap(); }
                 let decoded = tokio::task::spawn_blocking(move || { SophonManifest::decode(&mut Cursor::new(&file_contents)).unwrap() }).await.unwrap();
 
+                // every path the manifest lists, anything else in the game folder is stale and gets swept once the repair is done
+                let keep = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.name.clone()).collect::<std::collections::HashSet<String>>();
                 // Install total = uncompressed file sizes
                 let install_total: u64 = decoded.files.iter().filter(|f| f.r#type != 64).map(|f| f.size).sum();
                 // Download total = compressed chunk sizes
@@ -1093,6 +1095,8 @@ impl Sophon for Game {
                 // All files are complete make sure we report done just in case
                 progress(download_total, download_total, install_total, install_total, 0, 0, 0);
                 if p.exists() { let _ = fs::remove_dir_all(p.as_path()); }
+                let pruned = prune_unlisted(mainp, &keep).await;
+                if pruned > 0 { println!("Removed {pruned} outdated file(s) not listed in the manifest"); }
                 true
             } else { false }
         } else { false }

@@ -1,6 +1,6 @@
 use crate::download::game::{Game, Yostar};
 use crate::utils::downloader::AsyncDownloader;
-use crate::utils::{FailedChunk,KuroResource,SpeedTracker,YostarIndex,move_all,validate_checksum};
+use crate::utils::{move_all, prune_unlisted, validate_checksum, FailedChunk, KuroResource, SpeedTracker, YostarIndex};
 use crossbeam_deque::{Injector,Steal,Worker};
 use tokio::io::AsyncReadExt;
 
@@ -19,6 +19,11 @@ fn flatten_index(index: YostarIndex) -> Vec<KuroResource> {
         from_folder: None,
         chunk_infos: None
     }).collect()
+}
+
+// Some asset names carry '#' or '?' which the url parser would eat as fragment/query and truncate the request path, so encode them before building the download url
+fn encode_path(path: &str) -> String {
+    path.replace('%', "%25").replace('#', "%23").replace('?', "%3F")
 }
 
 impl Yostar for Game {
@@ -177,7 +182,7 @@ impl Yostar for Game {
                                 }
 
                                 let pn = chunk_task.dest.clone();
-                                let url = format!("{chunk_base}/{pn}");
+                                let url = format!("{chunk_base}/{}", encode_path(&pn));
                                 let mut last_error = String::new();
                                 let mut success = false;
                                 let mut cancelled = false;
@@ -284,6 +289,8 @@ impl Yostar for Game {
             if actual_files.is_err() { return false; }
             let files = flatten_index(actual_files.unwrap());
 
+            // every path the manifest lists, anything else in the game folder is stale and gets swept once the repair is done
+            let keep = files.iter().map(|f| f.dest.clone()).collect::<std::collections::HashSet<String>>();
             let total_bytes: u64 = files.iter().map(|f| f.size).sum();
             let download_counter = Arc::new(AtomicU64::new(0));
             let install_counter = Arc::new(AtomicU64::new(0));
@@ -406,7 +413,7 @@ impl Yostar for Game {
                                 if staging_dir.exists() { let _ = tokio::fs::remove_file(&staging_dir).await; }
 
                                 let pn = chunk_task.dest.clone();
-                                let url = format!("{chunk_base}/{pn}");
+                                let url = format!("{chunk_base}/{}", encode_path(&pn));
                                 let mut last_error = String::new();
                                 let mut success = false;
                                 let mut cancelled = false;
@@ -479,6 +486,8 @@ impl Yostar for Game {
             // Repair complete
             progress(total_bytes, total_bytes, total_bytes, total_bytes, 0, 0, 0);
             if p.exists() { let _ = tokio::fs::remove_dir_all(p.as_path()).await; }
+            let pruned = prune_unlisted(mainp.as_path(), &keep).await;
+            if pruned > 0 { println!("Removed {pruned} outdated file(s) not listed in the manifest"); }
             true
         } else { false }
     }

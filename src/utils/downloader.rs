@@ -273,11 +273,7 @@ impl AsyncDownloader {
         ""
     }
 
-    pub async fn download(
-        &mut self,
-        path: impl Into<PathBuf>,
-        mut progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static,
-    ) -> Result<(), DownloadingError> {
+    pub async fn download(&mut self, path: impl Into<PathBuf>, mut progress: impl FnMut(u64, u64, u64, u64) + Send + Sync + 'static) -> Result<(), DownloadingError> {
         let path = path.into();
         let mut downloaded = 0;
 

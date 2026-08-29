@@ -1,6 +1,6 @@
 use crate::download::game::{Game, Kuro};
 use crate::utils::downloader::AsyncDownloader;
-use crate::utils::{FailedChunk,KuroIndex,KuroResource,SpeedTracker,extract_archive_with_progress,move_all,validate_checksum};
+use crate::utils::{extract_archive_with_progress, move_all, prune_unlisted, validate_checksum, FailedChunk, KuroIndex, KuroResource, SpeedTracker};
 use crossbeam_deque::{Injector,Steal,Worker};
 use hdiffpatch_rs::patchers::KrDiff;
 use tokio::io::AsyncReadExt;
@@ -663,6 +663,8 @@ impl Kuro for Game {
             if actual_files.is_err() { return false; }
             let files = actual_files.unwrap();
 
+            // every path the manifest lists, anything else in the game folder is stale and gets swept once the repair is done
+            let keep = files.resource.iter().map(|f| f.dest.clone()).collect::<std::collections::HashSet<String>>();
             let total_bytes: u64 = files.resource.iter().map(|f| f.size).sum();
             let download_counter = Arc::new(AtomicU64::new(0));
             let install_counter = Arc::new(AtomicU64::new(0));
@@ -858,6 +860,8 @@ impl Kuro for Game {
             // Repair complete
             progress(total_bytes, total_bytes, total_bytes, total_bytes, 0, 0, 0);
             if p.exists() { let _ = tokio::fs::remove_dir_all(p.as_path()).await; }
+            let pruned = prune_unlisted(mainp.as_path(), &keep).await;
+            if pruned > 0 { println!("Removed {pruned} outdated file(s) not listed in the manifest"); }
             true
         } else { false }
     }

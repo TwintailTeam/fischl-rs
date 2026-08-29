@@ -77,6 +77,27 @@ pub(crate) fn move_all<'a>(src: &'a Path, dst: &'a Path) -> Pin<Box<dyn Future<O
     })
 }
 
+// Files sitting in the game folder that the manifest does not list are leftovers from an older version, drop them once a repair finished
+pub(crate) async fn prune_unlisted(root: &Path, keep: &std::collections::HashSet<String>) -> u64 {
+    let mut removed = 0u64;
+    let mut stack = vec![root.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let Ok(mut rd) = tokio::fs::read_dir(&dir).await else { continue; };
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            let Ok(rel) = path.strip_prefix(root) else { continue; };
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            // our own staging folders are not part of any manifest
+            if rel == "downloading" || rel == "repairing" || rel == "patching" { continue; }
+            if entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false) { stack.push(path); continue; }
+            if keep.contains(&rel) { continue; }
+            if tokio::fs::remove_file(&path).await.is_ok() { removed += 1; println!("Removed outdated file: {rel}"); }
+        }
+    }
+    removed
+}
+
 pub(crate) async fn validate_checksum(file: &Path, checksum: String) -> bool {
     if let Some(expected) = checksum.strip_prefix("crc64:") {
         return match tokio::fs::File::open(file).await {
