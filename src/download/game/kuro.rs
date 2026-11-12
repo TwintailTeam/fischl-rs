@@ -276,6 +276,10 @@ impl Kuro for Game {
 
             if preloaded {
                 // Preloaded: files already in staging, just extract/apply then move
+                let mut owned: Vec<String> = files.resource.iter().filter(|r| !r.dest.ends_with(".krzip") && !r.dest.ends_with(".krdiff") && !r.dest.ends_with(".krpdiff")).map(|r| r.dest.clone()).collect();
+                if let Some(zips) = &files.zip_infos { for z in zips { owned.extend(z.entries.iter().map(|e| e.dest.clone())); } }
+                if let Some(diffs) = &files.patch_infos { for d in diffs { owned.extend(d.entries.iter().map(|e| e.dest.clone())); } }
+                if let Some(diffs) = &files.group_infos { for d in diffs { owned.extend(d.dst_files.iter().map(|f| f.dest.clone())); } }
                 let install_total: u64 = {
                     let mut t = 0u64;
                     if let Some(zips) = &files.zip_infos { for z in zips { t += z.entries.iter().map(|e| e.size).sum::<u64>(); } }
@@ -367,9 +371,11 @@ impl Kuro for Game {
                 monitor_handle.abort();
                 // Move phase (phase 5)
                 progress(download_total, download_total, install_total, install_total, 0, 0, 5);
-                let moved = move_all(staging.as_ref(), game_path.as_ref()).await;
+                let mut moved: std::io::Result<()> = Ok(());
+                for f in owned.iter() { let (src, dst) = (staging.join(f), mainp.join(f)); if src.is_file() { if let Some(pd) = dst.parent() { let _ = tokio::fs::create_dir_all(pd).await; }
+                    if let Err(e) = tokio::fs::rename(&src, &dst).await { moved = Err(e); break; } }
+                }
                 if moved.is_ok() {
-                    let _ = tokio::fs::remove_dir_all(p.as_path()).await;
                     if let Some(dfl) = files.delete_files {
                         if !dfl.is_empty() { for df in dfl { let dfp = mainp.join(&df); if dfp.exists() { let _ = tokio::fs::remove_file(&dfp).await; } } }
                     }

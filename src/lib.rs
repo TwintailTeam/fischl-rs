@@ -155,7 +155,7 @@ mod tests {
         //let chunkurl = "https://hw-pcdownload-aws.aki-game.net/launcher/game/G153/50004/2.5.1/IYOwHBLfeAXMxVgHwGybWvvSqiDnPlbs/zip";
 
         let path = "/games/kuro/wuwa_global/testing";
-        let rep = <Game as Kuro>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false, |_, _, _, _, _, _, _| {}, None, None).await;
+        let rep = <Game as Kuro>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false, |_, _, _, _, _, _, _| {}, None, None, None).await;
         if rep {
             println!("repair_game_kuro success!");
         } else {
@@ -225,7 +225,7 @@ mod tests {
 
         let rep = <Game as Sophon>::repair_game(manifest.to_string(), chunkurl.to_string(), path.parse().unwrap(), false,|current, total, som1, som2, som3, som4, som5| {
             println!("current: {} | total: {}", current, total)
-        }, None, None).await;
+        }, None, None, None).await;
         if rep {
             println!("repair_game_sophon success!");
         } else {
