@@ -878,7 +878,7 @@ impl Sophon for Game {
         } else { false }
     }
 
-    async fn repair_game<F>(manifest: String, chunk_base: String, game_path: String, is_fast: bool, progress: F, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>) -> bool where F: Fn(u64, u64, u64, u64, u64, u64, u8) + Send + Sync + 'static {
+    async fn repair_game<F>(manifest: String, chunk_base: String, game_path: String, is_fast: bool, progress: F, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>, keep_files: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>) -> bool where F: Fn(u64, u64, u64, u64, u64, u64, u8) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || chunk_base.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str());
@@ -1095,8 +1095,10 @@ impl Sophon for Game {
                 // All files are complete make sure we report done just in case
                 progress(download_total, download_total, install_total, install_total, 0, 0, 0);
                 if p.exists() { let _ = fs::remove_dir_all(p.as_path()); }
-                let pruned = prune_unlisted(mainp, &keep).await;
-                if pruned > 0 { println!("Removed {pruned} outdated file(s) not listed in the manifest"); }
+                if let Some(kf) = keep_files { kf.lock().unwrap().extend(keep); } else {
+                    let pruned = prune_unlisted(mainp, &keep).await;
+                    if pruned > 0 { println!("Removed {pruned} outdated file(s) not listed in the manifest"); }
+                }
                 true
             } else { false }
         } else { false }

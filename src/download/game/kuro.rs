@@ -636,7 +636,7 @@ impl Kuro for Game {
         } else { false }
     }
 
-    async fn repair_game<F>(manifest: String, base_url: String, game_path: String, is_fast: bool, progress: F, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>) -> bool where F: Fn(u64, u64, u64, u64, u64, u64, u8) + Send + Sync + 'static {
+    async fn repair_game<F>(manifest: String, base_url: String, game_path: String, is_fast: bool, progress: F, cancel_token: Option<Arc<AtomicBool>>, verified_files: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>, keep_files: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>) -> bool where F: Fn(u64, u64, u64, u64, u64, u64, u8) + Send + Sync + 'static {
         if manifest.is_empty() || game_path.is_empty() || base_url.is_empty() { return false; }
 
         let mainp = Path::new(game_path.as_str()).to_path_buf();
@@ -860,8 +860,10 @@ impl Kuro for Game {
             // Repair complete
             progress(total_bytes, total_bytes, total_bytes, total_bytes, 0, 0, 0);
             if p.exists() { let _ = tokio::fs::remove_dir_all(p.as_path()).await; }
-            let pruned = prune_unlisted(mainp.as_path(), &keep).await;
-            if pruned > 0 { println!("Removed {pruned} outdated file(s) not listed in the manifest"); }
+            if let Some(kf) = keep_files { kf.lock().unwrap().extend(keep); } else {
+                let pruned = prune_unlisted(mainp.as_path(), &keep).await;
+                if pruned > 0 { println!("Removed {pruned} outdated file(s) not listed in the manifest"); }
+            }
             true
         } else { false }
     }

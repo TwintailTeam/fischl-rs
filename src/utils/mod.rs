@@ -77,8 +77,7 @@ pub(crate) fn move_all<'a>(src: &'a Path, dst: &'a Path) -> Pin<Box<dyn Future<O
     })
 }
 
-// Files sitting in the game folder that the manifest does not list are leftovers from an older version, drop them once a repair finished
-pub(crate) async fn prune_unlisted(root: &Path, keep: &std::collections::HashSet<String>) -> u64 {
+pub async fn prune_unlisted(root: &Path, keep: &std::collections::HashSet<String>) -> u64 {
     let mut removed = 0u64;
     let mut stack = vec![root.to_path_buf()];
 
