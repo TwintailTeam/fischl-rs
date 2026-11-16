@@ -349,7 +349,7 @@ impl Kuro for Game {
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs);
                         let krd = krdiff.apply();
-                        if krd { let fsize: u64 = d.entries.iter().map(|e| e.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krdiff!") }
+                        if krd { let fsize: u64 = d.entries.iter().map(|e| e.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krdiff!"); monitor_handle.abort(); return false; }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
@@ -363,7 +363,7 @@ impl Kuro for Game {
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs);
                         let krd = krdiff.apply();
-                        if krd { let fsize: u64 = d.dst_files.iter().map(|f| f.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krpdiff!") }
+                        if krd { let fsize: u64 = d.dst_files.iter().map(|f| f.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krpdiff!"); monitor_handle.abort(); return false; }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
@@ -508,8 +508,8 @@ impl Kuro for Game {
                                     }
 
                                     let pn = chunk_task.dest.clone();
-                                    let chunk_base = if !is_raw { chunk_res } else { chunks_zip + "/" };
-                                    let url = format!("{chunk_base}{pn}");
+                                    let chunk_base = if !is_raw { chunk_res } else { chunks_zip };
+                                    let url = format!("{}/{}", chunk_base.trim_end_matches('/'), pn.trim_start_matches('/'));
                                     let mut last_error = String::new();
                                     let mut success = false;
                                     let mut cancelled = false;
@@ -572,7 +572,8 @@ impl Kuro for Game {
                 if !failures.is_empty() {
                     eprintln!("\n=== Patch download completed with {} failed file(s) ===", failures.len());
                     for fc in failures.iter() { eprintln!("  - File: {}, Error: {}", fc.file_name, fc.error); }
-                    eprintln!("Please run 'Game Repair' after this patch download completes to fix affected files.\n");
+                    // do not apply a partial patch, staging is kept so a retry only fetches what is missing
+                    return false;
                 }
                 drop(failures);
 
@@ -610,7 +611,7 @@ impl Kuro for Game {
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs);
                         let krd = krdiff.apply();
-                        if krd { let fsize: u64 = d.entries.iter().map(|e| e.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krdiff!") }
+                        if krd { let fsize: u64 = d.entries.iter().map(|e| e.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krdiff!"); return false; }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
@@ -623,7 +624,7 @@ impl Kuro for Game {
                         let stringed = diffp.to_str().unwrap().to_string();
                         let mut krdiff = KrDiff::new(game_path.clone(), stringed, stgs);
                         let krd = krdiff.apply();
-                        if krd { let fsize: u64 = d.dst_files.iter().map(|f| f.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krpdiff!") }
+                        if krd { let fsize: u64 = d.dst_files.iter().map(|f| f.size).sum(); let v = install_counter.fetch_add(fsize, Ordering::SeqCst) + fsize; progress(download_total, download_total, v, install_total, 0, 0, 3); } else { eprintln!("Failed to apply krpdiff!"); return false; }
                         if diffp.exists() { tokio::fs::remove_file(diffp).await.unwrap(); }
                     }
                 }
@@ -1023,8 +1024,8 @@ impl Kuro for Game {
                                 }
 
                                 let pn = chunk_task.dest.clone();
-                                let chunk_base = if !is_raw { chunk_res } else { chunks_zip + "/" };
-                                let url = format!("{chunk_base}{pn}");
+                                let chunk_base = if !is_raw { chunk_res } else { chunks_zip };
+                                let url = format!("{}/{}", chunk_base.trim_end_matches('/'), pn.trim_start_matches('/'));
                                 let mut last_error = String::new();
                                 let mut success = false;
                                 let mut cancelled = false;
@@ -1087,7 +1088,8 @@ impl Kuro for Game {
             if !failures.is_empty() {
                 eprintln!("\n=== Preload completed with {} failed file(s) ===", failures.len());
                 for fc in failures.iter() { eprintln!("  - File: {}, Error: {}", fc.file_name, fc.error); }
-                eprintln!("Some preload files could not be downloaded. The update may still work.\n");
+                // incomplete staging must not be marked as preloaded, patch would treat missing diffs as already applied
+                return false;
             }
             drop(failures);
             progress(download_total, download_total, install_total, install_total, 0, 0, 0);
